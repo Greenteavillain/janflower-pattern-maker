@@ -128,6 +128,7 @@
     position:absolute; top:58px; z-index:6;
     max-height:calc(100% - 72px);
     overflow-y:auto; overscroll-behavior:contain;
+    scrollbar-gutter:stable; scrollbar-width:thin; scrollbar-color:var(--hair) transparent;
     border-radius:12px;
     padding:8px;
     transition:transform .18s ease, opacity .18s ease;
@@ -136,8 +137,15 @@
   .library{left:14px; width:240px; padding:10px;}
   .panel.collapsed{transform:translateX(calc(100% + 22px)); opacity:0; pointer-events:none;}
   .library.collapsed{transform:translateX(calc(-100% - 22px)); opacity:0; pointer-events:none;}
-  .panel::-webkit-scrollbar, .library::-webkit-scrollbar{width:6px;}
-  .panel::-webkit-scrollbar-thumb, .library::-webkit-scrollbar-thumb{background:var(--hair); border-radius:3px;}
+  .panel::-webkit-scrollbar, .library::-webkit-scrollbar{width:11px;}
+  .panel::-webkit-scrollbar-track, .library::-webkit-scrollbar-track{background:transparent;}
+  .panel::-webkit-scrollbar-thumb, .library::-webkit-scrollbar-thumb{
+    background:var(--hair); border-radius:6px;
+    border:3px solid transparent; background-clip:padding-box;
+  }
+  .panel::-webkit-scrollbar-thumb:hover, .library::-webkit-scrollbar-thumb:hover{
+    background:rgba(61,75,58,.28); background-clip:padding-box;
+  }
 
   /* 플로팅 토글 버튼 (데스크톱 좌·우 상단) */
   .fab{
@@ -149,6 +157,7 @@
   .fab:active{transform:scale(.96);}
   .fab.on{background:var(--green); color:var(--beige); border-color:var(--green);}
   #fab{top:14px; right:14px;}
+  #gridFab{top:14px; right:58px;}
   #libFab{top:14px; left:14px;}
 
   /* ───────── 라이브러리 내부 ───────── */
@@ -246,7 +255,7 @@
       transition:none;
     }
     .panel.collapsed{display:none; transform:none; opacity:1;}
-    #fab{display:none;}
+    #fab, #gridFab{display:none;}
 
     .library{
       position:absolute; left:10px; right:10px; top:56px;
@@ -281,6 +290,9 @@
   <button class="fab surface" id="libFab" title="예시" aria-label="예시 열기/닫기">
     <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="2.3"/><circle cx="10" cy="4.4" r="2.3"/><circle cx="10" cy="15.6" r="2.3"/><circle cx="4.4" cy="10" r="2.3"/><circle cx="15.6" cy="10" r="2.3"/></svg>
   </button>
+  <button class="fab surface gridtoggle" id="gridFab" title="격자 (G)" aria-label="격자 켜기/끄기">
+    <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h14"/></svg>
+  </button>
   <button class="fab surface" id="fab" title="패널" aria-label="패널 열기/닫기">
     <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6.3h7.5"/><circle cx="13" cy="6.3" r="2"/><path d="M15 6.3h2"/><path d="M3 13.7h2"/><circle cx="7" cy="13.7" r="2"/><path d="M9 13.7h8"/></svg>
   </button>
@@ -292,6 +304,9 @@
     </button>
     <button class="ibtn" id="mRotate" title="회전">
       <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.2 10a6.2 6.2 0 1 1-1.8-4.4"/><path d="M16.6 2.8v3.1h-3.1"/></svg>
+    </button>
+    <button class="ibtn gridtoggle" id="mGrid" title="격자 (G)">
+      <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h14"/></svg>
     </button>
     <button class="ibtn" id="mMore" title="메뉴">
       <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/></svg>
@@ -317,9 +332,6 @@
           <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5v15M2.5 10h15"/><path d="M7.8 4.7 10 2.5l2.2 2.2M7.8 15.3 10 17.5l2.2-2.2M4.7 7.8 2.5 10l2.2 2.2M15.3 7.8 17.5 10l-2.2 2.2"/></svg>
         </button>
         <span class="vdiv"></span>
-        <button class="ibtn" id="gridBtn" title="격자 (G)">
-          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h14"/></svg>
-        </button>
         <button class="ibtn" id="bgBtn" title="배경 베이지/투명 전환">
           <svg class="ic" viewBox="0 0 20 20" stroke="currentColor" stroke-width="1.5" fill="none"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M3.8 3.8h6.2v6.2H3.8zM10 10h6.2v6.2H10z" fill="currentColor" stroke="none" opacity=".45"/></svg>
         </button>
@@ -437,7 +449,7 @@ function shapeMarkup(sh, rot, fill, s, mode = "screen"){
 const PRESETS = [
   /* ── 꽃 ── */
   { name:"튤립", cat:"꽃", data:[
-      "pQ2 pQ3",
+      "pQ3 pQ2",
       "pQ3 pQ2",
       "pQ1 pQ0",
       "gQ1 gQ0",
@@ -608,12 +620,12 @@ const PRESETS = [
 
   /* ── 장면 ── */
   { name:"꽃밭", cat:"장면", data:[
-      ".   .   .   .   yC0 .   .   .   .   .   .   yC0",
-      "pQ2 pQ3 .   yC0 .   .   .   .   .   .   .   .",
-      "pQ3 pQ2 .   yC0 .   .   pQ0 pC0 pQ1 .   pS0 pS0",
-      "pQ1 pQ0 .   yC0 yC0 .   pC0 yC0 pC0 .   pI3 pI2",
-      "gQ1 gQ0 .   yC0 yC0 .   pQ3 pC0 pQ2 .   yC0 yC0",
-      "gQ3 gQ2 gS0 gQ3 gQ2 gS0 gQ2 gS0 gQ3 gS0 gQ3 gQ2",
+      ".   .   .   .   yC0",
+      ".   .   .   yC0",
+      "pQ3 pQ2 .   yC0",
+      "pQ3 pQ2 .   yC0 yC0 .   yQ1 yQ2",
+      "pQ1 pQ0 .   yC0 yC0 .   yQ0 yQ3",
+      "gQ1 gQ0 .   gQ3 gQ2 .   gQ3 gQ2",
   ]},
   { name:"패턴 필드", cat:"장면", data:[
       "pQ2 pQ3 yQ1 yQ2 gQ2 gQ3 yS0 pC0 gC0 yI0 yI1 .",
@@ -1313,13 +1325,14 @@ function setHand(on){
 }
 handBtn.addEventListener("click", () => setHand(!state.hand));
 
-const gridBtn = document.getElementById("gridBtn");
-function toggleGrid(){
-  state.showGrid = !state.showGrid;
-  gridBtn.classList.toggle("on", state.showGrid);
+const gridButtons = [...document.querySelectorAll(".gridtoggle")];
+function setGrid(on){
+  state.showGrid = on;
+  gridButtons.forEach(b => b.classList.toggle("on", on));
   scheduleRender();
 }
-gridBtn.addEventListener("click", toggleGrid);
+function toggleGrid(){ setGrid(!state.showGrid); }
+gridButtons.forEach(b => b.addEventListener("click", toggleGrid));
 
 const bgBtn = document.getElementById("bgBtn");
 bgBtn.addEventListener("click", () => {
@@ -1460,15 +1473,28 @@ if (typeof ResizeObserver !== "undefined"){
 renderShapes();
 renderColors();
 renderLibrary();
-gridBtn.classList.add("on");           // 격자 기본 켜짐 표시
-setLibrary(window.innerWidth > 760);   // 데스크톱: 열고 시작 / 모바일: 닫고 시작
-setPanel(window.innerWidth > 760);     // 모바일: 시트 닫고 시작 (하단 툴바가 기본 도구)
+setGrid(true);                         // 격자 기본 켜짐
+setLibrary(false);                     // 시작은 패널을 닫아 깔끔한 캔버스로
+setPanel(false);
 
-// 첫 화면: 꽃밭을 원점 중앙에 깔고, 내용에 맞춰 보여주기
+// 첫 화면: 꽃밭을 100%(원점 중앙)로 보여주기
 (function init(){
   const garden = parsedPresets.find(p => p.name === "꽃밭");
-  for (const c of garden.cells) setCell(c.x - 6, c.y - 3, c);
-  requestAnimationFrame(() => { fitContent(); });
+  for (const c of garden.cells) setCell(c.x - 4, c.y - 3, c);
+  requestAnimationFrame(() => {
+    const r = boardRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const c of state.cells.values()){
+      if (c.x < minX) minX = c.x;
+      if (c.y < minY) minY = c.y;
+      if (c.x > maxX) maxX = c.x;
+      if (c.y > maxY) maxY = c.y;
+    }
+    state.cam.z = 1;
+    state.cam.x = (minX + maxX + 1) / 2 * CELL - r.width  / 2;
+    state.cam.y = (minY + maxY + 1) / 2 * CELL - r.height / 2;
+    scheduleRender();
+  });
 })();
 </script>
 </body>
