@@ -1,0 +1,1475 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>잔꽃 패턴 메이커</title>
+<style>
+  :root{
+    --beige:#fff8ee;
+    --pink:#ff92ce;
+    --yellow:#ffcc66;
+    --green:#548962;
+    --ink:#3d6249;
+    --surface:#fffdf8;                 /* 크롬 표면: 따뜻한 화이트 */
+    --hair:rgba(61,75,58,.13);         /* 헤어라인 */
+    --hover:rgba(84,137,98,.08);       /* 호버 틴트 */
+    --shadow:0 4px 16px rgba(61,75,58,.10);
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    height:100dvh;
+    display:flex; flex-direction:column;
+    overflow:hidden;
+    overscroll-behavior:none;
+    background:var(--beige);
+    color:var(--ink);
+    font-family:"Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    line-height:1.45;
+  }
+
+  /* ───────── 무한 캔버스 무대 ───────── */
+  main{
+    flex:1 1 auto; min-height:0;
+    position:relative;
+    display:flex;
+  }
+  .stage{
+    flex:1 1 auto; min-width:0; min-height:0;
+    position:relative;
+    background:var(--beige);
+    overflow:hidden;
+  }
+  .stage.transparent{
+    background:
+      repeating-conic-gradient(rgba(84,137,98,.10) 0% 25%, rgba(255,255,255,.4) 0% 50%)
+      0 0 / 18px 18px;
+  }
+  #board{
+    position:absolute; inset:0; width:100%; height:100%;
+    display:block; touch-action:none; user-select:none;
+    -webkit-user-select:none; -webkit-touch-callout:none;
+    cursor:crosshair;
+  }
+  .stage.placingmode #board{cursor:copy;}
+  .stage.panmode #board{cursor:grab;}
+  .stage.axishover #board{cursor:ew-resize;}
+  .stage.panning #board{cursor:grabbing;}
+
+  /* ───────── 공통 컨트롤 ───────── */
+  button{
+    font-family:inherit; color:var(--ink);
+    border:none; background:none; cursor:pointer; padding:0;
+    touch-action:manipulation;
+  }
+  button:focus-visible{outline:2px solid rgba(84,137,98,.7); outline-offset:2px;}
+  .ic{width:18px; height:18px; display:block;}
+
+  /* 아이콘 버튼 — 평상시 고스트, 켜짐은 초록 면 */
+  .ibtn{
+    width:30px; height:30px; border-radius:6px;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .1s;
+  }
+  .ibtn:hover{background:var(--hover);}
+  .ibtn:active{transform:translateY(1px);}
+  .ibtn.on{background:var(--green); color:var(--beige);}
+  .ibtn-row{display:flex; align-items:center; gap:2px; flex-wrap:wrap;}
+  .vdiv{width:1px; height:18px; background:var(--hair); margin:0 5px; flex:0 0 auto;}
+
+  /* 텍스트 버튼(배율 등) */
+  .tbtn{
+    border-radius:6px; padding:0 8px; height:30px;
+    font-size:12px; font-weight:600;
+    display:flex; align-items:center;
+  }
+  .tbtn:hover{background:var(--hover);}
+
+  /* 메뉴 행 */
+  .mrow{
+    width:100%; text-align:left;
+    border-radius:6px; padding:7px 9px;
+    font-size:12.5px; font-weight:500;
+    display:flex; align-items:center; gap:8px;
+  }
+  .mrow:hover{background:var(--hover);}
+  .mrow .kbd{margin-left:auto; font-size:10.5px; opacity:.45; font-weight:500;}
+
+  /* ───────── 떠 있는 표면 공통 ───────── */
+  .surface{
+    background:var(--surface);
+    border:1px solid var(--hair);
+    box-shadow:var(--shadow);
+  }
+
+  /* 배율 HUD */
+  .zoomhud{
+    position:absolute; right:14px; bottom:14px; z-index:5;
+    border-radius:6px; padding:4px 10px;
+    font-size:11.5px; font-weight:700;
+  }
+  .zoomhud:hover{background:var(--surface); filter:brightness(.98);}
+
+  /* 배치 모드 바 */
+  .placebar{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5;
+    display:none; align-items:center; gap:4px;
+    border-radius:8px; padding:4px 4px 4px 12px;
+    font-size:12.5px; font-weight:600; white-space:nowrap;
+    max-width:calc(100% - 24px);
+  }
+  .placebar.visible{display:flex;}
+  .placebar .nm{color:#d6539f; margin-right:4px;}
+
+  /* ───────── 플로팅 패널 공통 ───────── */
+  .panel, .library{
+    position:absolute; top:58px; z-index:6;
+    max-height:calc(100% - 72px);
+    overflow-y:auto; overscroll-behavior:contain;
+    border-radius:12px;
+    padding:8px;
+    transition:transform .18s ease, opacity .18s ease;
+  }
+  .panel{right:14px; width:212px;}
+  .library{left:14px; width:240px; padding:10px;}
+  .panel.collapsed{transform:translateX(calc(100% + 22px)); opacity:0; pointer-events:none;}
+  .library.collapsed{transform:translateX(calc(-100% - 22px)); opacity:0; pointer-events:none;}
+  .panel::-webkit-scrollbar, .library::-webkit-scrollbar{width:6px;}
+  .panel::-webkit-scrollbar-thumb, .library::-webkit-scrollbar-thumb{background:var(--hair); border-radius:3px;}
+
+  /* 플로팅 토글 버튼 (데스크톱 좌·우 상단) */
+  .fab{
+    position:absolute; z-index:7;
+    width:36px; height:36px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .fab:hover{filter:brightness(.98);}
+  .fab:active{transform:scale(.96);}
+  .fab.on{background:var(--green); color:var(--beige); border-color:var(--green);}
+  #fab{top:14px; right:14px;}
+  #libFab{top:14px; left:14px;}
+
+  /* ───────── 라이브러리 내부 ───────── */
+  .cat{
+    font-size:10.5px; font-weight:800; letter-spacing:.05em;
+    margin:10px 2px 5px; opacity:.55;
+  }
+  .cat:first-of-type{margin-top:0;}
+  .lib-grid{display:grid; grid-template-columns:repeat(3, 1fr); gap:5px;}
+  .lib-item{
+    border-radius:8px; padding:6px 3px 5px;
+    display:flex; flex-direction:column; align-items:center; gap:3px;
+    transition:background .1s, box-shadow .1s;
+  }
+  .lib-item:hover{background:var(--hover);}
+  .lib-item.active{box-shadow:inset 0 0 0 1.5px var(--green); background:rgba(84,137,98,.07);}
+  .lib-item svg{width:52px; height:52px; display:block; background:var(--beige); border-radius:6px;}
+  .lib-item .nm{font-size:10.5px; font-weight:600; line-height:1.2; text-align:center;}
+
+  /* ───────── 도구 패널 내부 ───────── */
+  .sec{margin-bottom:8px;}
+  .sec:last-child{margin-bottom:0;}
+  .divider{border:0; border-top:1px solid var(--hair); margin:8px 2px;}
+
+  .shape-row{display:flex; gap:2px; flex-wrap:wrap;}
+  .shape-btn{
+    width:38px; height:38px; border-radius:6px; padding:3px;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .1s;
+  }
+  .shape-btn svg{display:block;}
+  .shape-btn:hover{background:var(--hover);}
+  .shape-btn.selected{background:rgba(84,137,98,.16);}
+
+  .color-row{display:flex; gap:8px; padding:2px 3px;}
+  .swatch{
+    width:26px; height:26px; border-radius:50%;
+    border:1px solid rgba(0,0,0,.06);
+    transition:box-shadow .1s;
+  }
+  .swatch.selected{box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--green);}
+
+  /* 데스크톱 하단 팔레트 바 (피그마식 중앙 플로팅) */
+  .dockbar{
+    position:absolute; left:50%; transform:translateX(-50%); bottom:14px; z-index:6;
+    display:flex; align-items:center; gap:8px;
+    border-radius:12px; padding:6px 10px;
+  }
+  .dockbar .vdiv{margin:0 3px;}
+
+  /* ───────── 모바일 전용 요소 (데스크톱에선 숨김) ───────── */
+  .mtoolbar{display:none;}
+  .mtop{display:none;}
+
+  /* ───────── 모바일 ───────── */
+  @media (max-width:760px){
+    main{flex-direction:column;}
+
+    .dockbar{display:none;}
+
+    /* 하단 툴바 — 팔레트 + 실행취소 */
+    .mtoolbar{
+      display:flex; flex:0 0 auto; align-items:center; gap:8px;
+      padding:7px 10px calc(7px + env(safe-area-inset-bottom));
+      border-top:1px solid var(--hair);
+      background:var(--surface);
+    }
+    .mtb-scroll{
+      flex:1 1 auto; min-width:0;
+      display:flex; align-items:center; gap:6px;
+      overflow-x:auto; padding:2px;
+      -webkit-overflow-scrolling:touch;
+    }
+    .mtb-scroll::-webkit-scrollbar{display:none;}
+    .mtb-div{flex:0 0 1px; height:24px; background:var(--hair);}
+    .mtb-fixed{flex:0 0 auto; display:flex; gap:2px; align-items:center;}
+    .mtoolbar .shape-row, .mtoolbar .color-row{flex-wrap:nowrap;}
+    .mtoolbar .shape-btn{flex:0 0 auto;}
+    .mtoolbar .swatch{width:30px; height:30px; flex:0 0 auto;}
+    .mtoolbar .ibtn{width:38px; height:38px;}
+
+    /* 상단 우측: 이동·회전·메뉴 — 하나의 바 */
+    .mtop{
+      position:absolute; top:10px; right:10px; z-index:7;
+      display:flex; align-items:center; gap:2px;
+      border-radius:10px; padding:3px;
+    }
+    .mtop .ibtn{width:34px; height:34px;}
+
+    /* 도구 시트 — 툴바 위로 열림. 팔레트 섹션은 툴바와 중복이라 숨김 */
+    .panel{
+      position:absolute; left:10px; right:10px;
+      top:auto; bottom:calc(64px + env(safe-area-inset-bottom));
+      width:auto; max-height:48dvh;
+      transition:none;
+    }
+    .panel.collapsed{display:none; transform:none; opacity:1;}
+    #fab{display:none;}
+
+    .library{
+      position:absolute; left:10px; right:10px; top:56px;
+      width:auto; max-height:54dvh; z-index:8;
+      transition:none;
+    }
+    .library.collapsed{display:none;}
+    .lib-grid{grid-template-columns:repeat(4, 1fr);}
+    #libFab{top:10px; left:10px;}
+
+    .placebar{top:58px; max-width:calc(100% - 20px);}
+  }
+</style>
+</head>
+<body>
+
+<main id="main">
+  <div class="stage" id="stage">
+    <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
+    <button class="zoomhud surface" id="zoomHud" title="100%로 재설정">100%</button>
+    <div class="placebar surface" id="placebar">
+      <span class="nm" id="placeName"></span>
+      <button class="ibtn" id="placeRotate" title="도장 90° 회전 (R)">
+        <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.2 10a6.2 6.2 0 1 1-1.8-4.4"/><path d="M16.6 2.8v3.1h-3.1"/></svg>
+      </button>
+      <button class="ibtn" id="placeDone" title="배치 종료 (Esc)">
+        <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <button class="fab surface" id="libFab" title="예시" aria-label="예시 열기/닫기">
+    <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="2.3"/><circle cx="10" cy="4.4" r="2.3"/><circle cx="10" cy="15.6" r="2.3"/><circle cx="4.4" cy="10" r="2.3"/><circle cx="15.6" cy="10" r="2.3"/></svg>
+  </button>
+  <button class="fab surface" id="fab" title="패널" aria-label="패널 열기/닫기">
+    <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3 6.3h7.5"/><circle cx="13" cy="6.3" r="2"/><path d="M15 6.3h2"/><path d="M3 13.7h2"/><circle cx="7" cy="13.7" r="2"/><path d="M9 13.7h8"/></svg>
+  </button>
+
+  <!-- 모바일 상단 버튼 그룹 -->
+  <div class="mtop surface" id="mtop">
+    <button class="ibtn" id="mHand" title="화면 이동">
+      <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5v15M2.5 10h15"/><path d="M7.8 4.7 10 2.5l2.2 2.2M7.8 15.3 10 17.5l2.2-2.2M4.7 7.8 2.5 10l2.2 2.2M15.3 7.8 17.5 10l-2.2 2.2"/></svg>
+    </button>
+    <button class="ibtn" id="mRotate" title="회전">
+      <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.2 10a6.2 6.2 0 1 1-1.8-4.4"/><path d="M16.6 2.8v3.1h-3.1"/></svg>
+    </button>
+    <button class="ibtn" id="mMore" title="메뉴">
+      <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/></svg>
+    </button>
+  </div>
+
+  <!-- 예시 라이브러리 (좌측) -->
+  <aside class="library surface" id="library">
+    <div id="libBody"><!-- JS가 채움 --></div>
+  </aside>
+
+  <!-- 도구 패널 (우측) -->
+  <aside class="panel surface" id="panel">
+    <div class="sec">
+      <div class="ibtn-row">
+        <button class="ibtn" id="rotateBtn" title="브러시/도장 회전 (R)">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M16.2 10a6.2 6.2 0 1 1-1.8-4.4"/><path d="M16.6 2.8v3.1h-3.1"/></svg>
+        </button>
+        <button class="ibtn" id="mirrorBtn" title="미러 — 켜면 화면 중앙에 축이 생기고, 드래그로 옮길 수 있어요">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5v15" stroke-dasharray="2.6 2.6"/><path d="M6.3 6.7 3 10l3.3 3.3"/><path d="M13.7 6.7 17 10l-3.3 3.3"/></svg>
+        </button>
+        <button class="ibtn" id="handBtn" title="드래그로 화면 이동 (Space)">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5v15M2.5 10h15"/><path d="M7.8 4.7 10 2.5l2.2 2.2M7.8 15.3 10 17.5l2.2-2.2M4.7 7.8 2.5 10l2.2 2.2M15.3 7.8 17.5 10l-2.2 2.2"/></svg>
+        </button>
+        <span class="vdiv"></span>
+        <button class="ibtn" id="gridBtn" title="격자 (G)">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M10 3v14M3 10h14"/></svg>
+        </button>
+        <button class="ibtn" id="bgBtn" title="배경 베이지/투명 전환">
+          <svg class="ic" viewBox="0 0 20 20" stroke="currentColor" stroke-width="1.5" fill="none"><rect x="3" y="3" width="14" height="14" rx="1.5"/><path d="M3.8 3.8h6.2v6.2H3.8zM10 10h6.2v6.2H10z" fill="currentColor" stroke="none" opacity=".45"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="ibtn-row">
+        <button class="ibtn" id="zoomOutBtn" title="축소">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4.5 10h11"/></svg>
+        </button>
+        <button class="tbtn" id="zoomResetBtn" title="배율 100%">100%</button>
+        <button class="ibtn" id="zoomInBtn" title="확대">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M10 4.5v11M4.5 10h11"/></svg>
+        </button>
+        <span class="vdiv"></span>
+        <button class="ibtn" id="fitBtn" title="내용에 맞춤">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7V4.6A1.6 1.6 0 0 1 4.6 3H7M13 3h2.4A1.6 1.6 0 0 1 17 4.6V7M17 13v2.4a1.6 1.6 0 0 1-1.6 1.6H13M7 17H4.6A1.6 1.6 0 0 1 3 15.4V13"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="sec">
+      <button class="mrow" id="randomBtn" title="지금 보이는 영역을 랜덤으로 채움">랜덤 생성</button>
+      <button class="mrow" id="clearBtn">전체 지우기</button>
+      <button class="mrow" id="undoBtn">실행취소<span class="kbd">Ctrl+Z</span></button>
+      <hr class="divider">
+      <button class="mrow" id="svgBtn">SVG 저장</button>
+      <button class="mrow" id="pngBtn">PNG 저장</button>
+    </div>
+  </aside>
+
+  <!-- 데스크톱 하단 팔레트 바 -->
+  <div class="dockbar surface" id="dockbar">
+    <div class="shape-row" id="dShapes"></div>
+    <span class="vdiv"></span>
+    <div class="color-row" id="dColors"></div>
+  </div>
+
+  <!-- 모바일 하단 툴바 -->
+  <div class="mtoolbar" id="mtoolbar">
+    <div class="mtb-scroll">
+      <div class="shape-row" id="mShapes"></div>
+      <div class="mtb-div"></div>
+      <div class="color-row" id="mColors"></div>
+    </div>
+    <div class="mtb-fixed">
+      <button class="ibtn" id="mUndo" title="실행취소">
+        <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.8 3.2 7.6 7 11.4"/><path d="M3.2 7.6h8.6a4.6 4.6 0 0 1 0 9.2H8.2"/></svg>
+      </button>
+    </div>
+  </div>
+</main>
+
+<script>
+"use strict";
+
+/* ───────────────────────── 상수 & 상태 ───────────────────────── */
+const CELL = 60;                       // 월드 좌표계에서 셀 한 변
+const COLORS = { p:"#ff92ce", y:"#ffcc66", g:"#548962" };
+const COLOR_NAMES = { p:"jf pink", y:"jf yellow", g:"jf green" };
+const BG = "#fff8ee";
+
+// 회전 의미 — Q(사분원): 부채꼴 중심이 놓이는 모서리 / I(역사분원): 파인 모서리
+// 0 = 좌상, 1 = 우상, 2 = 우하, 3 = 좌하  (rotate(90°×rot)로 구현)
+const MIRROR_ROT = [1, 0, 3, 2];       // 좌우반전 시 회전값 매핑
+
+const ZMIN = 0.08, ZMAX = 5;           // z = 월드 1단위당 화면 px (z=1 → 셀 60px = 100%)
+const GRID_MIN_PX = 14;                // 셀이 이보다 작아지면 격자 자동 숨김
+
+const state = {
+  cells: new Map(),                    // "x,y" → {x, y, sh, rot, col}
+  cam: { x: 0, y: 0, z: 1 },           // x,y = 화면 좌상단의 월드 좌표
+  brush: { sh:"Q", rot:0, col:"g" },
+  tool: "paint",                       // "paint" | "erase"
+  hand: false,
+  mirror: false,
+  axis: 0,                             // 미러 축 위치, 반 칸 단위 (짝수 = 셀 경계, 홀수 = 셀 중앙)
+  bgOn: true,
+  showGrid: true,
+  placing: null,                       // null | {name, cells:[{x,y,sh,rot,col}], cols, rows}
+  undo: [],
+};
+
+const key = (x, y) => `${x},${y}`;
+
+/* ───────────────────────── 도형 마크업 ───────────────────────── */
+function rotatable(sh){ return sh === "Q" || sh === "I"; }
+
+function shapeMarkup(sh, rot, fill, s, mode = "screen"){
+  // 이음매 방지 스트로크 — 화면에선 줌과 무관하게 항상 1px(non-scaling),
+  // 내보내기/아이콘에선 셀의 0.75% 고정. 두께가 눈에 띄지 않으면서 틈만 덮는다.
+  const seam = mode === "screen"
+    ? ` stroke="${fill}" stroke-width="1" vector-effect="non-scaling-stroke"`
+    : ` stroke="${fill}" stroke-width="${s/80}"`;
+  if (sh === "S") return `<rect x="0" y="0" width="${s}" height="${s}" fill="${fill}"${seam}/>`;
+  if (sh === "C") return `<circle cx="${s/2}" cy="${s/2}" r="${s/2}" fill="${fill}"${seam}/>`;
+  const tf = rot ? ` transform="rotate(${rot*90} ${s/2} ${s/2})"` : "";
+  if (sh === "Q"){
+    // 좌상단 모서리에 중심을 둔 사분원 (볼록)
+    return `<path d="M0,0 L${s},0 A${s},${s} 0 0,1 0,${s} Z" fill="${fill}"${seam}${tf}/>`;
+  }
+  if (sh === "I"){
+    // 정사각형에서 좌상단 사분원을 뺀 모양 (오목)
+    return `<path d="M${s},0 L${s},${s} L0,${s} A${s},${s} 0 0,0 ${s},0 Z" fill="${fill}"${seam}${tf}/>`;
+  }
+  return "";
+}
+
+/* ───────────────────────── 예시 라이브러리 데이터 ─────────────────────────
+   토큰: "." = 빈칸(기존 셀 유지) / "{색}{모양}{회전}" 예: pQ2, yC0
+   모든 예시는 다섯 모듈(빈칸·정사각형·원·사분원·역사분원)만으로 구성됨        */
+const PRESETS = [
+  /* ── 꽃 ── */
+  { name:"튤립", cat:"꽃", data:[
+      "pQ2 pQ3",
+      "pQ3 pQ2",
+      "pQ1 pQ0",
+      "gQ1 gQ0",
+  ]},
+  { name:"동글이꽃", cat:"꽃", data:[
+      ".   yC0",
+      "yC0 .",
+      "yC0 .",
+      "yC0 yC0",
+      "yC0 yC0",
+      "gQ3 gQ2",
+  ]},
+  { name:"바람개비", cat:"꽃", data:[
+      "yQ1 yQ2",
+      "yQ0 yQ3",
+      "gQ3 gQ2",
+  ]},
+  { name:"들꽃", cat:"꽃", data:[
+      ".   pC0 .",
+      "pC0 yC0 pC0",
+      ".   pC0 .",
+      "gQ2 gS0 gQ3",
+  ]},
+  { name:"코스모스", cat:"꽃", data:[
+      "pQ0 pC0 pQ1",
+      "pC0 yC0 pC0",
+      "pQ3 pC0 pQ2",
+      "gQ2 gS0 gQ3",
+  ]},
+  { name:"해바라기", cat:"꽃", data:[
+      "yQ0 yC0 yQ1",
+      "yC0 gC0 yC0",
+      "yQ3 yC0 yQ2",
+      "gQ2 gS0 gQ3",
+  ]},
+  { name:"나팔꽃", cat:"꽃", data:[
+      "pI0 pI1",
+      "pQ1 pQ0",
+      "gQ3 gQ2",
+  ]},
+  { name:"작약", cat:"꽃", data:[
+      "pQ2 pQ3",
+      "pQ1 yQ0",
+      "gQ3 gQ2",
+  ]},
+  { name:"민들레", cat:"꽃", data:[
+      ".   .   yC0",
+      "yQ2 yQ3 .",
+      "yQ1 yQ0 .",
+      "gQ1 gQ0 .",
+  ]},
+  { name:"방울꽃", cat:"꽃", data:[
+      "pS0 pS0",
+      "pI3 pI2",
+      "yC0 yC0",
+      "gQ3 gQ2",
+  ]},
+  { name:"수국", cat:"꽃", data:[
+      ".   pC0 pC0",
+      "pC0 yC0 pC0",
+      ".   pC0 .",
+      "gQ2 gS0 gQ3",
+  ]},
+  { name:"연꽃", cat:"꽃", data:[
+      ".   pQ2 pQ3 .",
+      "pQ3 pS0 pS0 pQ2",
+      ".   gQ1 gQ0 .",
+  ]},
+  { name:"팬지", cat:"꽃", data:[
+      "pC0 pC0",
+      "pQ1 pQ0",
+      "gQ3 gQ2",
+  ]},
+  { name:"채송화", cat:"꽃", data:[
+      "pC0 yC0",
+      "gQ3 gQ2",
+  ]},
+  { name:"클로버", cat:"꽃", data:[
+      "gQ0 gQ1",
+      "gQ3 gQ2",
+  ]},
+  { name:"새싹", cat:"꽃", data:[
+      "gQ3 gQ2",
+  ]},
+
+  /* ── 픽토그램 ── */
+  { name:"사람", cat:"픽토그램", data:[
+      ".   gC0 .",
+      "gQ2 gS0 gQ3",
+      ".   gS0 .",
+      ".   gS0 .",
+  ]},
+  { name:"여성", cat:"픽토그램", data:[
+      ".   gC0 .",
+      ".   gS0 .",
+      "gQ1 .   gQ0",
+      ".   gS0 .",
+  ]},
+  { name:"휠체어", cat:"픽토그램", data:[
+      ".   gC0 .",
+      "gQ2 gQ3 gS0",
+      "gQ1 gQ0 gQ1",
+  ]},
+  { name:"안내", cat:"픽토그램", data:[
+      "gC0",
+      "gS0",
+      "gS0",
+      "gQ1",
+  ]},
+  { name:"소화기", cat:"픽토그램", data:[
+      "gC0 gQ1",
+      "gQ2 gQ3",
+      "gS0 gS0",
+  ]},
+  { name:"주의", cat:"픽토그램", data:[
+      "gQ2 .   gQ3",
+      ".   gS0 .",
+      "gQ1 .   gQ0",
+  ]},
+  { name:"주차", cat:"픽토그램", data:[
+      "gS0 gS0",
+      "gS0 gI0",
+      "gS0 .",
+  ]},
+  { name:"경고", cat:"픽토그램", data:[
+      "gS0",
+      "gS0",
+      ".",
+      "gC0",
+  ]},
+  { name:"카페", cat:"픽토그램", data:[
+      "gS0 gI1 gQ3",
+      "gQ1 gQ0 .",
+  ]},
+
+  /* ── 모양 ── */
+  { name:"하트", cat:"모양", data:[
+      "pQ2 pQ3 pQ2 pQ3",
+      "pS0 pS0 pS0 pS0",
+      "pQ1 pS0 pS0 pQ0",
+      ".   pQ1 pQ0 .",
+  ]},
+  { name:"나비", cat:"모양", data:[
+      "pQ0 gC0 pQ1",
+      "pQ3 gC0 pQ2",
+  ]},
+  { name:"해", cat:"모양", data:[
+      "yQ0 .   .   yQ1",
+      ".   yQ2 yQ3 .",
+      ".   yQ1 yQ0 .",
+      "yQ3 .   .   yQ2",
+  ]},
+  { name:"나무", cat:"모양", data:[
+      "gQ2 gS0 gQ3",
+      ".   gS0 .",
+      ".   gS0 .",
+  ]},
+  { name:"잎사귀", cat:"모양", data:[
+      "gQ2",
+      "gQ0",
+  ]},
+  { name:"반원", cat:"모양", data:[
+      "yQ2 yQ3",
+  ]},
+  { name:"잔디", cat:"모양", data:[
+      "gQ3 gQ2 gQ3 gQ2 gQ3 gQ2",
+  ]},
+
+  /* ── 장면 ── */
+  { name:"꽃밭", cat:"장면", data:[
+      ".   .   .   .   yC0 .   .   .   .   .   .   yC0",
+      "pQ2 pQ3 .   yC0 .   .   .   .   .   .   .   .",
+      "pQ3 pQ2 .   yC0 .   .   pQ0 pC0 pQ1 .   pS0 pS0",
+      "pQ1 pQ0 .   yC0 yC0 .   pC0 yC0 pC0 .   pI3 pI2",
+      "gQ1 gQ0 .   yC0 yC0 .   pQ3 pC0 pQ2 .   yC0 yC0",
+      "gQ3 gQ2 gS0 gQ3 gQ2 gS0 gQ2 gS0 gQ3 gS0 gQ3 gQ2",
+  ]},
+  { name:"패턴 필드", cat:"장면", data:[
+      "pQ2 pQ3 yQ1 yQ2 gQ2 gQ3 yS0 pC0 gC0 yI0 yI1 .",
+      "pI1 pI0 yQ0 yQ3 yC0 yC0 pS0 gC0 yC0 pQ2 pQ3 yC0",
+      "pQ1 pQ0 gC0 pS0 .   pC0 gQ2 gQ3 pS0 yQ1 yQ2 gS0",
+      "gQ3 gQ2 yS0 pC0 yC0 gS0 yI1 yI0 .   yQ0 yQ3 pC0",
+      "yC0 .   pQ3 pQ2 gS0 yC0 pC0 .   gQ1 gQ0 pS0 yQ0",
+      "yC0 gC0 pI2 pI3 .   pS0 yQ2 yQ3 yC0 pC0 gC0 .",
+      "gQ0 gQ1 gQ0 gQ1 gC0 yS0 gQ3 gQ2 gS0 gQ0 gQ1 gC0",
+  ]},
+];
+
+function parsePresetCells(p){
+  const cells = [];
+  let cols = 0;
+  p.data.forEach((row, y) => {
+    const tokens = row.trim().split(/\s+/);
+    cols = Math.max(cols, tokens.length);
+    tokens.forEach((t, x) => {
+      if (t === ".") return;
+      cells.push({ x, y, sh: t[1], rot: Number(t[2]) || 0, col: t[0] });
+    });
+  });
+  return { name: p.name, cells, cols, rows: p.data.length };
+}
+
+// 도장 90° 시계방향 회전: (x,y) → (rows-1-y, x), 회전값 +1
+function rotateStamp(st){
+  const cells = st.cells.map(c => ({
+    x: st.rows - 1 - c.y,
+    y: c.x,
+    sh: c.sh,
+    rot: rotatable(c.sh) ? (c.rot + 1) % 4 : 0,
+    col: c.col,
+  }));
+  return { name: st.name, cells, cols: st.rows, rows: st.cols };
+}
+
+/* ───────────────────────── DOM ───────────────────────── */
+const boardEl = document.getElementById("board");
+const stageEl = document.getElementById("stage");
+const zoomHud = document.getElementById("zoomHud");
+const placebar = document.getElementById("placebar");
+
+function boardRect(){ return boardEl.getBoundingClientRect(); }
+
+/* ───────────────────────── 좌표 변환 ───────────────────────── */
+function screenToWorld(sx, sy){
+  const r = boardRect();
+  return {
+    x: state.cam.x + (sx - r.left) / state.cam.z,
+    y: state.cam.y + (sy - r.top)  / state.cam.z,
+  };
+}
+function cellFromPoint(cx, cy){
+  const w = screenToWorld(cx, cy);
+  return { x: Math.floor(w.x / CELL), y: Math.floor(w.y / CELL) };
+}
+function cellFromEvent(e){ return cellFromPoint(e.clientX, e.clientY); }
+// 터치 배치 시 고스트가 손가락에 가려지지 않도록 위로 띄우는 화면 오프셋(px)
+const TOUCH_PLACE_OFFSET = 48;
+
+function visibleWorld(){
+  const r = boardRect();
+  return { x: state.cam.x, y: state.cam.y, w: r.width / state.cam.z, h: r.height / state.cam.z };
+}
+
+/* ───────────────────────── 렌더링 (rAF 코얼레싱) ───────────────────────── */
+let renderQueued = false;
+let hoverCell = null;   // 배치 모드 고스트 위치
+
+function scheduleRender(){
+  if (renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; render(); });
+}
+
+function stampAnchor(){
+  if (!state.placing || !hoverCell) return null;
+  return {
+    x: hoverCell.x - Math.floor(state.placing.cols / 2),
+    y: hoverCell.y - Math.floor(state.placing.rows / 2),
+  };
+}
+
+function render(){
+  const v = visibleWorld();
+  const cellPx = state.cam.z * CELL;
+  let s = "";
+
+  // 가이드 격자 — 도형 아래 레이어. 색면 위를 가로지르지 않도록 먼저 그린다.
+  if (state.showGrid && cellPx >= GRID_MIN_PX){
+    let lines = "";
+    const cx0 = Math.floor(v.x / CELL), cx1 = Math.ceil((v.x + v.w) / CELL);
+    const cy0 = Math.floor(v.y / CELL), cy1 = Math.ceil((v.y + v.h) / CELL);
+    for (let cx = cx0; cx <= cx1; cx++)
+      lines += `<line x1="${cx*CELL}" y1="${v.y}" x2="${cx*CELL}" y2="${v.y+v.h}" vector-effect="non-scaling-stroke"/>`;
+    for (let cy = cy0; cy <= cy1; cy++)
+      lines += `<line x1="${v.x}" y1="${cy*CELL}" x2="${v.x+v.w}" y2="${cy*CELL}" vector-effect="non-scaling-stroke"/>`;
+    s += `<g stroke="rgba(84,137,98,.20)" stroke-width="1" pointer-events="none">${lines}</g>`;
+  }
+
+  // 셀 도형 — 보이는 것만 (격자 위에 그려서 색면이 깨끗하게 덮이도록)
+  const x0 = v.x - CELL, x1 = v.x + v.w + CELL;
+  const y0 = v.y - CELL, y1 = v.y + v.h + CELL;
+  for (const c of state.cells.values()){
+    const wx = c.x * CELL, wy = c.y * CELL;
+    if (wx > x1 || wx + CELL < x0 || wy > y1 || wy + CELL < y0) continue;
+    s += `<g transform="translate(${wx},${wy})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], CELL)}</g>`;
+  }
+
+  // 미러 기준선 + 드래그 핸들
+  if (state.mirror){
+    const AX = state.axis * CELL / 2;
+    if (AX > v.x - CELL && AX < v.x + v.w + CELL){
+      s += `<line x1="${AX}" y1="${v.y}" x2="${AX}" y2="${v.y+v.h}" stroke="${COLORS.p}" stroke-width="2"
+            stroke-dasharray="7 7" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+      s += `<circle cx="${AX}" cy="${v.y + v.h/2}" r="${10/state.cam.z}" fill="${COLORS.p}"
+            stroke="#fff" stroke-width="${2/state.cam.z}" pointer-events="none"/>`;
+    }
+  }
+
+  // 배치 모드 고스트 미리보기 (미러 모드면 반전 사본도 함께)
+  const a = stampAnchor();
+  if (a){
+    let g = "";
+    for (const c of state.placing.cells){
+      g += `<g transform="translate(${(a.x + c.x) * CELL},${(a.y + c.y) * CELL})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], CELL)}</g>`;
+    }
+    const bw = state.placing.cols * CELL, bh = state.placing.rows * CELL;
+    s += `<g opacity="0.55" pointer-events="none">${g}</g>`;
+    s += `<rect x="${a.x*CELL}" y="${a.y*CELL}" width="${bw}" height="${bh}" fill="none"
+          stroke="${COLORS.g}" stroke-width="1.5" stroke-dasharray="6 5"
+          vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+    if (state.mirror){
+      let mg = "";
+      for (const c of state.placing.cells){
+        const gx = mirrorX(a.x + c.x);
+        const rot = rotatable(c.sh) ? MIRROR_ROT[c.rot] : 0;
+        mg += `<g transform="translate(${gx * CELL},${(a.y + c.y) * CELL})">${shapeMarkup(c.sh, rot, COLORS[c.col], CELL)}</g>`;
+      }
+      s += `<g opacity="0.35" pointer-events="none">${mg}</g>`;
+    }
+  }
+
+  boardEl.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
+  boardEl.innerHTML = s;
+  zoomHud.textContent = `${Math.round(state.cam.z * 100)}%`;
+}
+
+/* ───────────────────────── 실행취소 ───────────────────────── */
+function pushUndo(){
+  state.undo.push(JSON.stringify([...state.cells.values()]));
+  if (state.undo.length > 50) state.undo.shift();
+}
+function undo(){
+  const prev = state.undo.pop();
+  if (prev === undefined) return;
+  state.cells = new Map(JSON.parse(prev).map(c => [key(c.x, c.y), c]));
+  scheduleRender();
+}
+
+/* ───────────────────────── 셀 조작 ───────────────────────── */
+function setCell(x, y, val){
+  if (val) state.cells.set(key(x, y), { x, y, sh: val.sh, rot: val.rot || 0, col: val.col });
+  else state.cells.delete(key(x, y));
+}
+function getCell(x, y){ return state.cells.get(key(x, y)) || null; }
+function sameCell(c, brush){
+  return !!c && c.sh === brush.sh && c.col === brush.col;
+}
+const mirrorX = (x) => state.axis - 1 - x;   // 미러 축 기준 반대편 셀 (축은 반 칸 단위)
+
+function paintAt(x, y, initial){
+  const mx = mirrorX(x);
+  const apply = (val) => {
+    setCell(x, y, val);
+    if (state.mirror && mx !== x){
+      if (!val) setCell(mx, y, null);
+      else setCell(mx, y, { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 });
+    }
+  };
+
+  if (state.tool === "erase"){
+    apply(null);
+  } else {
+    const cur = getCell(x, y);
+    if (initial && sameCell(cur, state.brush) && rotatable(cur.sh)){
+      apply({ sh: cur.sh, col: cur.col, rot: (cur.rot + 1) % 4 });
+    } else if (!sameCell(cur, state.brush) || (cur && cur.rot !== state.brush.rot)){
+      apply({ ...state.brush, rot: rotatable(state.brush.sh) ? state.brush.rot : 0 });
+    }
+  }
+  scheduleRender();
+}
+
+/* ───────────────────────── 배치 모드 ───────────────────────── */
+function setPlacing(parsed){
+  state.placing = parsed;
+  hoverCell = null;
+  placebar.classList.toggle("visible", !!parsed);
+  stageEl.classList.toggle("placingmode", !!parsed);
+  if (parsed) document.getElementById("placeName").textContent = parsed.name;
+  renderLibrary();
+  scheduleRender();
+}
+
+function placeStampAt(anchor){
+  if (!state.placing || !anchor) return;
+  pushUndo();
+  for (const c of state.placing.cells){
+    setCell(anchor.x + c.x, anchor.y + c.y, { sh: c.sh, rot: c.rot, col: c.col });
+  }
+  if (state.mirror){
+    for (const c of state.placing.cells){
+      const gx = mirrorX(anchor.x + c.x);
+      setCell(gx, anchor.y + c.y, {
+        sh: c.sh,
+        rot: rotatable(c.sh) ? MIRROR_ROT[c.rot] : 0,
+        col: c.col,
+      });
+    }
+  }
+  scheduleRender();
+}
+
+function rotatePlacing(){
+  if (!state.placing) return;
+  state.placing = rotateStamp(state.placing);
+  scheduleRender();
+}
+
+document.getElementById("placeRotate").addEventListener("click", rotatePlacing);
+document.getElementById("placeDone").addEventListener("click", () => setPlacing(null));
+
+/* ───────────────────────── 카메라 (팬/줌) ───────────────────────── */
+function panBy(dxPx, dyPx){
+  state.cam.x -= dxPx / state.cam.z;
+  state.cam.y -= dyPx / state.cam.z;
+  scheduleRender();
+}
+function zoomAt(factor, sx, sy){
+  const r = boardRect();
+  const mx = sx - r.left, my = sy - r.top;
+  const wx = state.cam.x + mx / state.cam.z;
+  const wy = state.cam.y + my / state.cam.z;
+  state.cam.z = Math.min(ZMAX, Math.max(ZMIN, state.cam.z * factor));
+  state.cam.x = wx - mx / state.cam.z;
+  state.cam.y = wy - my / state.cam.z;
+  scheduleRender();
+}
+function zoomAtCenter(factor){
+  const r = boardRect();
+  zoomAt(factor, r.left + r.width / 2, r.top + r.height / 2);
+}
+function setZoomCentered(z){
+  const r = boardRect();
+  const cx = state.cam.x + r.width  / (2 * state.cam.z);
+  const cy = state.cam.y + r.height / (2 * state.cam.z);
+  state.cam.z = Math.min(ZMAX, Math.max(ZMIN, z));
+  state.cam.x = cx - r.width  / (2 * state.cam.z);
+  state.cam.y = cy - r.height / (2 * state.cam.z);
+  scheduleRender();
+}
+function fitContent(){
+  const r = boardRect();
+  if (state.cells.size === 0){
+    state.cam.z = 1;
+    state.cam.x = -r.width  / 2;
+    state.cam.y = -r.height / 2;
+    scheduleRender();
+    return;
+  }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of state.cells.values()){
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  const wx = (minX - 1) * CELL, wy = (minY - 1) * CELL;
+  const ww = (maxX - minX + 3) * CELL, wh = (maxY - minY + 3) * CELL;
+  const z = Math.min(ZMAX, Math.max(ZMIN, Math.min(r.width / ww, r.height / wh, 2.5)));
+  state.cam.z = z;
+  state.cam.x = wx + ww / 2 - r.width  / (2 * z);
+  state.cam.y = wy + wh / 2 - r.height / (2 * z);
+  scheduleRender();
+}
+
+/* ───────────────────────── 포인터 입력 ─────────────────────────
+   1 포인터: 칠하기 / 배치 / 이동(손·Space·휠클릭) / 축 드래그
+   2 포인터: 핀치 줌 + 이동 (모바일)                                  */
+const pointers = new Map();
+const deadPointers = new Set();
+let painting = false;
+let lastCell = null;
+let panPointer = null;
+let pinch = null;
+let spaceDown = false;
+let placeDragPointer = null;   // 터치 배치: 끌어서 놓기
+let axisDragPointer = null;    // 미러 축 드래그
+
+function updateCursor(){
+  stageEl.classList.toggle("panmode", (spaceDown || state.hand) && !panPointer);
+  stageEl.classList.toggle("panning", panPointer !== null || pinch !== null);
+}
+
+// 미러 축에 포인터가 가까운지 (잡기 판정: 마우스 10px, 터치 18px)
+function nearAxis(clientX, pointerType){
+  if (!state.mirror) return false;
+  const r = boardRect();
+  const screenAX = (state.axis * CELL / 2 - state.cam.x) * state.cam.z + r.left;
+  return Math.abs(clientX - screenAX) <= (pointerType === "mouse" ? 10 : 18);
+}
+
+boardEl.addEventListener("pointerdown", (e) => {
+  e.preventDefault();
+  boardEl.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  // 두 번째 손가락 → 핀치 모드 (진행 중이던 칠하기/배치 끌기/축 드래그는 취소)
+  if (pointers.size === 2){
+    if (painting){ painting = false; lastCell = null; undo(); }
+    placeDragPointer = null;
+    axisDragPointer = null;
+    panPointer = null;
+    const [a, b] = [...pointers.values()];
+    pinch = {
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+      mx: (a.x + b.x) / 2,
+      my: (a.y + b.y) / 2,
+      base: Math.hypot(a.x - b.x, a.y - b.y),  // 줌 데드존 기준 간격
+      zooming: false,
+    };
+    for (const id of pointers.keys()) deadPointers.add(id);
+    updateCursor();
+    return;
+  }
+  if (pointers.size > 2) return;
+
+  // 이동: 휠클릭(중버튼) / Space / 손 도구
+  if (e.button === 1 || spaceDown || state.hand){
+    panPointer = e.pointerId;
+    updateCursor();
+    return;
+  }
+  if (e.button !== 0) return;
+
+  // 미러 축 잡기 (배치·칠하기보다 우선)
+  if (nearAxis(e.clientX, e.pointerType)){
+    axisDragPointer = e.pointerId;
+    stageEl.classList.add("axishover");
+    return;
+  }
+
+  // 배치 모드: 마우스는 즉시 찍기, 터치/펜은 끌어서 놓기 (고스트는 손가락 위로 띄움)
+  if (state.placing){
+    if (e.pointerType === "mouse"){
+      hoverCell = cellFromEvent(e);
+      placeStampAt(stampAnchor());
+    } else {
+      hoverCell = cellFromPoint(e.clientX, e.clientY - TOUCH_PLACE_OFFSET);
+      placeDragPointer = e.pointerId;
+      scheduleRender();
+    }
+    return;
+  }
+
+  // 칠하기 시작
+  painting = true;
+  pushUndo();
+  const { x, y } = cellFromEvent(e);
+  lastCell = key(x, y);
+  paintAt(x, y, true);
+});
+
+boardEl.addEventListener("pointermove", (e) => {
+  const prev = pointers.get(e.pointerId);
+  if (prev) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+  // 핀치 (두 손가락) — 간격 변화가 데드존(14px)을 넘기 전까지는 순수 이동
+  if (pinch && pointers.size === 2){
+    const [a, b] = [...pointers.values()];
+    const dist = Math.hypot(a.x - b.x, a.y - b.y);
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    if (!pinch.zooming && Math.abs(dist - pinch.base) > 14){
+      pinch.zooming = true;
+      pinch.dist = dist;               // 활성화 순간의 배율 점프 방지
+    }
+    if (pinch.zooming && pinch.dist > 0 && dist > 0) zoomAt(dist / pinch.dist, mx, my);
+    panBy(mx - pinch.mx, my - pinch.my);
+    pinch.dist = dist; pinch.mx = mx; pinch.my = my;
+    return;
+  }
+
+  // 화면 이동
+  if (panPointer === e.pointerId && prev){
+    panBy(e.clientX - prev.x, e.clientY - prev.y);
+    return;
+  }
+
+  // 미러 축 드래그 (반 칸 단위 스냅)
+  if (axisDragPointer === e.pointerId){
+    const w = screenToWorld(e.clientX, e.clientY);
+    state.axis = Math.round(w.x / (CELL / 2));
+    scheduleRender();
+    return;
+  }
+
+  // 마우스 호버: 축 근처에서 좌우 이동 커서
+  if (e.pointerType === "mouse" && e.buttons === 0){
+    stageEl.classList.toggle("axishover", nearAxis(e.clientX, "mouse"));
+  }
+
+  if (deadPointers.has(e.pointerId)) return;
+
+  // 배치 모드: 고스트 이동 (마우스 호버 / 터치 끌기 — 터치는 손가락 위로 띄움)
+  if (state.placing){
+    if (e.pointerType === "mouse" || placeDragPointer === e.pointerId){
+      const c = e.pointerType === "mouse"
+        ? cellFromEvent(e)
+        : cellFromPoint(e.clientX, e.clientY - TOUCH_PLACE_OFFSET);
+      if (!hoverCell || c.x !== hoverCell.x || c.y !== hoverCell.y){
+        hoverCell = c;
+        scheduleRender();
+      }
+    }
+    return;
+  }
+
+  // 칠하기 드래그
+  if (painting){
+    const { x, y } = cellFromEvent(e);
+    const k = key(x, y);
+    if (k === lastCell) return;
+    lastCell = k;
+    paintAt(x, y, false);
+  }
+});
+
+["pointerup", "pointercancel"].forEach(ev =>
+  boardEl.addEventListener(ev, (e) => {
+    // 터치 배치 끝 → 그 자리에 찍기
+    if (ev === "pointerup" && placeDragPointer === e.pointerId){
+      placeStampAt(stampAnchor());
+    }
+    if (placeDragPointer === e.pointerId) placeDragPointer = null;
+    if (axisDragPointer === e.pointerId){
+      axisDragPointer = null;
+      stageEl.classList.remove("axishover");
+    }
+
+    pointers.delete(e.pointerId);
+    deadPointers.delete(e.pointerId);
+    if (panPointer === e.pointerId) panPointer = null;
+    if (pointers.size < 2) pinch = null;
+    if (pointers.size === 0){ painting = false; lastCell = null; }
+    updateCursor();
+  })
+);
+
+boardEl.addEventListener("pointerleave", () => {
+  if (state.placing && !placeDragPointer){ hoverCell = null; scheduleRender(); }
+});
+
+// 휠 = 커서 기준 확대/축소 (트랙패드 핀치의 ctrl+wheel도 동일 처리)
+stageEl.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  const factor = Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0017));
+  zoomAt(factor, e.clientX, e.clientY);
+}, { passive:false });
+
+// 중버튼 자동 스크롤 방지 + 우클릭: 배치 종료 / 컨텍스트 메뉴 차단
+boardEl.addEventListener("auxclick", (e) => { if (e.button === 1) e.preventDefault(); });
+boardEl.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  if (state.placing) setPlacing(null);
+});
+
+/* ───────────────────────── 키보드 ───────────────────────── */
+document.addEventListener("keydown", (e) => {
+  if (e.code === "Space"){
+    e.preventDefault();
+    if (!e.repeat){ spaceDown = true; updateCursor(); }
+    return;
+  }
+  if (e.key === "Escape"){
+    if (state.placing) setPlacing(null);
+    return;
+  }
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z"){ e.preventDefault(); undo(); }
+  else if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey){
+    if (state.placing) rotatePlacing();
+    else if (rotatable(state.brush.sh)){ state.brush.rot = (state.brush.rot + 1) % 4; renderShapes(); }
+  }
+  else if (e.key.toLowerCase() === "g" && !e.metaKey && !e.ctrlKey){
+    toggleGrid();
+  }
+});
+document.addEventListener("keyup", (e) => {
+  if (e.code === "Space"){ spaceDown = false; updateCursor(); }
+});
+window.addEventListener("blur", () => {
+  spaceDown = false; panPointer = null; pinch = null; placeDragPointer = null; axisDragPointer = null; updateCursor();
+});
+
+// 버튼 클릭 후 포커스가 남아 Space가 버튼을 다시 누르는 문제 방지
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("button");
+  if (b) b.blur();
+});
+
+/* ───────────────────────── 팔레트 ───────────────────────── */
+const SHAPES = [
+  { sh:"S", label:"정사각형" },
+  { sh:"C", label:"원" },
+  { sh:"Q", label:"사분원" },
+  { sh:"I", label:"역사분원" },
+  { sh:"E", label:"지우개" },
+];
+
+function paletteIcon(sh){
+  const s = 30;
+  if (sh === "E"){
+    return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
+      <rect x="1.5" y="1.5" width="${s-3}" height="${s-3}" rx="4" fill="${BG}"
+            stroke="rgba(61,75,58,.4)" stroke-width="1.6" stroke-dasharray="4 4"/></svg>`;
+  }
+  const rot = rotatable(sh) ? state.brush.rot : 0;
+  return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${shapeMarkup(sh, rot, COLORS[state.brush.col], s, "export")}</svg>`;
+}
+
+function buildShapeRow(wrap){
+  wrap.innerHTML = "";
+  SHAPES.forEach(({ sh, label }) => {
+    const b = document.createElement("button");
+    b.className = "shape-btn";
+    b.title = label;
+    b.setAttribute("aria-label", label);
+    const selected = (sh === "E") ? state.tool === "erase"
+                                  : state.tool === "paint" && state.brush.sh === sh;
+    if (selected) b.classList.add("selected");
+    b.innerHTML = paletteIcon(sh);
+    b.addEventListener("click", () => {
+      setPlacing(null);                 // 그리기 도구 선택 = 배치 모드 종료
+      setHand(false);
+      if (sh === "E"){
+        state.tool = "erase";
+      } else if (state.tool === "paint" && state.brush.sh === sh && rotatable(sh)){
+        state.brush.rot = (state.brush.rot + 1) % 4;
+      } else {
+        state.tool = "paint";
+        state.brush.sh = sh;
+        if (!rotatable(sh)) state.brush.rot = 0;
+      }
+      renderShapes();
+      updateCursor();
+    });
+    wrap.appendChild(b);
+  });
+}
+function renderShapes(){
+  ["dShapes", "mShapes"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) buildShapeRow(el);
+  });
+}
+
+function buildColorRow(wrap){
+  wrap.innerHTML = "";
+  Object.keys(COLORS).forEach(k => {
+    const b = document.createElement("button");
+    b.className = "swatch" + (state.brush.col === k ? " selected" : "");
+    b.style.background = COLORS[k];
+    b.title = COLOR_NAMES[k];
+    b.setAttribute("aria-label", COLOR_NAMES[k]);
+    b.addEventListener("click", () => {
+      state.brush.col = k;
+      state.tool = "paint";
+      renderColors();
+      renderShapes();
+    });
+    wrap.appendChild(b);
+  });
+}
+function renderColors(){
+  ["dColors", "mColors"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) buildColorRow(el);
+  });
+}
+
+/* ───────────────────────── 라이브러리 UI ───────────────────────── */
+const libraryEl = document.getElementById("library");
+const libFab = document.getElementById("libFab");
+const parsedPresets = PRESETS.map(parsePresetCells);
+
+function thumbSVG(parsed){
+  const W = parsed.cols * CELL, H = parsed.rows * CELL;
+  let s = "";
+  for (const c of parsed.cells){
+    s += `<g transform="translate(${c.x*CELL},${c.y*CELL})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], CELL, "export")}</g>`;
+  }
+  const pad = CELL * 0.4;
+  return `<svg viewBox="${-pad} ${-pad} ${W + pad*2} ${H + pad*2}" preserveAspectRatio="xMidYMid meet"
+          xmlns="http://www.w3.org/2000/svg">${s}</svg>`;
+}
+
+function renderLibrary(){
+  const body = document.getElementById("libBody");
+  body.innerHTML = "";
+  const cats = [...new Set(PRESETS.map(p => p.cat))];
+  cats.forEach(cat => {
+    const h = document.createElement("h3");
+    h.className = "cat";
+    h.textContent = cat;
+    body.appendChild(h);
+    const grid = document.createElement("div");
+    grid.className = "lib-grid";
+    parsedPresets.forEach((parsed, i) => {
+      if (PRESETS[i].cat !== cat) return;
+      const b = document.createElement("button");
+      b.className = "lib-item" + (state.placing && state.placing.name === parsed.name ? " active" : "");
+      b.title = `${parsed.name} (${parsed.cols}×${parsed.rows})`;
+      b.innerHTML = `${thumbSVG(parsed)}<span class="nm">${parsed.name}</span>`;
+      b.addEventListener("click", () => {
+        if (state.placing && state.placing.name === parsed.name) setPlacing(null);
+        else {
+          setPlacing({ ...parsed, cells: parsed.cells.map(c => ({ ...c })) });
+          if (window.innerWidth <= 760) setLibrary(false);
+        }
+      });
+      grid.appendChild(b);
+    });
+    body.appendChild(grid);
+  });
+}
+
+function setLibrary(open){
+  libraryEl.classList.toggle("collapsed", !open);
+  libFab.classList.toggle("on", open);
+}
+libFab.addEventListener("click", () => setLibrary(libraryEl.classList.contains("collapsed")));
+
+/* ───────────────────────── 패널 열기/접기 ───────────────────────── */
+const panelEl = document.getElementById("panel");
+const fabEl = document.getElementById("fab");
+
+function setPanel(open){
+  panelEl.classList.toggle("collapsed", !open);
+  fabEl.classList.toggle("on", open);
+  const mm = document.getElementById("mMore");
+  if (mm) mm.classList.toggle("on", open);
+}
+fabEl.addEventListener("click", () => setPanel(panelEl.classList.contains("collapsed")));
+
+// 모바일 툴바·상단 버튼
+document.getElementById("mMore").addEventListener("click", () => setPanel(panelEl.classList.contains("collapsed")));
+document.getElementById("mUndo").addEventListener("click", undo);
+document.getElementById("mHand").addEventListener("click", () => setHand(!state.hand));
+document.getElementById("mRotate").addEventListener("click", () => {
+  if (state.placing){ rotatePlacing(); return; }
+  if (rotatable(state.brush.sh)){
+    state.brush.rot = (state.brush.rot + 1) % 4;
+    renderShapes();
+  }
+});
+
+/* ───────────────────────── 옵션 버튼 ───────────────────────── */
+document.getElementById("rotateBtn").addEventListener("click", () => {
+  if (state.placing){ rotatePlacing(); return; }
+  if (rotatable(state.brush.sh)){
+    state.brush.rot = (state.brush.rot + 1) % 4;
+    renderShapes();
+  }
+});
+
+const mirrorBtn = document.getElementById("mirrorBtn");
+mirrorBtn.addEventListener("click", () => {
+  state.mirror = !state.mirror;
+  if (state.mirror){
+    // 켜는 순간, 현재 화면 중앙에 축 생성 (반 칸 단위 스냅)
+    const v = visibleWorld();
+    state.axis = Math.round((v.x + v.w / 2) / (CELL / 2));
+  }
+  mirrorBtn.classList.toggle("on", state.mirror);
+  scheduleRender();
+});
+
+const handBtn = document.getElementById("handBtn");
+function setHand(on){
+  state.hand = on;
+  handBtn.classList.toggle("on", on);
+  const mh = document.getElementById("mHand");
+  if (mh) mh.classList.toggle("on", on);
+  updateCursor();
+}
+handBtn.addEventListener("click", () => setHand(!state.hand));
+
+const gridBtn = document.getElementById("gridBtn");
+function toggleGrid(){
+  state.showGrid = !state.showGrid;
+  gridBtn.classList.toggle("on", state.showGrid);
+  scheduleRender();
+}
+gridBtn.addEventListener("click", toggleGrid);
+
+const bgBtn = document.getElementById("bgBtn");
+bgBtn.addEventListener("click", () => {
+  state.bgOn = !state.bgOn;
+  bgBtn.classList.toggle("on", !state.bgOn);   // 켜짐 = 투명 모드
+  stageEl.classList.toggle("transparent", !state.bgOn);
+  scheduleRender();
+});
+
+/* ───────────────────────── 보기 버튼 ───────────────────────── */
+document.getElementById("zoomInBtn").addEventListener("click", () => zoomAtCenter(1.25));
+document.getElementById("zoomOutBtn").addEventListener("click", () => zoomAtCenter(1 / 1.25));
+document.getElementById("zoomResetBtn").addEventListener("click", () => setZoomCentered(1));
+document.getElementById("fitBtn").addEventListener("click", fitContent);
+zoomHud.addEventListener("click", () => setZoomCentered(1));
+
+/* ───────────────────────── 랜덤 / 지우기 / 실행취소 ───────────────────────── */
+function randomCellVal(){
+  const r = Math.random();
+  if (r < 0.16) return null;
+  const colKeys = ["p", "y", "g"];
+  const col = colKeys[Math.floor(Math.random() * 3)];
+  const r2 = Math.random();
+  let sh;
+  if      (r2 < 0.17) sh = "S";
+  else if (r2 < 0.44) sh = "C";
+  else if (r2 < 0.80) sh = "Q";
+  else                sh = "I";
+  return { sh, col, rot: rotatable(sh) ? Math.floor(Math.random() * 4) : 0 };
+}
+
+document.getElementById("randomBtn").addEventListener("click", () => {
+  pushUndo();
+  const v = visibleWorld();
+  let cx0 = Math.floor(v.x / CELL), cx1 = Math.ceil((v.x + v.w) / CELL) - 1;
+  let cy0 = Math.floor(v.y / CELL), cy1 = Math.ceil((v.y + v.h) / CELL) - 1;
+  const MAXC = 64, MAXR = 36;
+  if (cx1 - cx0 + 1 > MAXC){
+    const mid = Math.round((cx0 + cx1) / 2);
+    cx0 = mid - Math.floor(MAXC / 2); cx1 = cx0 + MAXC - 1;
+  }
+  if (cy1 - cy0 + 1 > MAXR){
+    const mid = Math.round((cy0 + cy1) / 2);
+    cy0 = mid - Math.floor(MAXR / 2); cy1 = cy0 + MAXR - 1;
+  }
+
+  const done = new Set();
+  for (let y = cy0; y <= cy1; y++){
+    for (let x = cx0; x <= cx1; x++){
+      const cx = state.mirror ? Math.max(x, mirrorX(x)) : x;
+      const k = key(cx, y);
+      if (done.has(k)) continue;
+      done.add(k);
+      const val = randomCellVal();
+      setCell(cx, y, val);
+      if (state.mirror){
+        const mx = mirrorX(cx);
+        if (mx !== cx) setCell(mx, y, val ? { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 } : null);
+      }
+    }
+  }
+  scheduleRender();
+});
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  if (state.cells.size === 0) return;
+  pushUndo();
+  state.cells.clear();
+  scheduleRender();
+});
+
+document.getElementById("undoBtn").addEventListener("click", undo);
+
+/* ───────────────────────── 내보내기 — 내용 경계 자동 크롭 ───────────────────────── */
+function buildExportSVG(){
+  if (state.cells.size === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of state.cells.values()){
+    if (c.x < minX) minX = c.x;
+    if (c.y < minY) minY = c.y;
+    if (c.x > maxX) maxX = c.x;
+    if (c.y > maxY) maxY = c.y;
+  }
+  const cols = maxX - minX + 1, rows = maxY - minY + 1;
+  const W = cols * CELL, H = rows * CELL;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`;
+  if (state.bgOn) s += `<rect x="0" y="0" width="${W}" height="${H}" fill="${BG}"/>`;
+  for (const c of state.cells.values()){
+    s += `<g transform="translate(${(c.x - minX) * CELL},${(c.y - minY) * CELL})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], CELL, "export")}</g>`;
+  }
+  s += `</svg>`;
+  return { svg: s, cols, rows };
+}
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+document.getElementById("svgBtn").addEventListener("click", () => {
+  const out = buildExportSVG();
+  if (!out){ alert("캔버스가 비어 있어요."); return; }
+  downloadBlob(new Blob([out.svg], { type: "image/svg+xml" }), "janflower-pattern.svg");
+});
+
+document.getElementById("pngBtn").addEventListener("click", () => {
+  const out = buildExportSVG();
+  if (!out){ alert("캔버스가 비어 있어요."); return; }
+  const blob = new Blob([out.svg], { type: "image/svg+xml" });
+  const url = URL.createObjectURL(blob);
+  const img = new Image();
+  img.onload = () => {
+    const base = Math.max(out.cols, out.rows) * CELL;
+    const scale = Math.max(1, Math.min(3, Math.floor(8000 / base)));
+    const canvas = document.createElement("canvas");
+    canvas.width = out.cols * CELL * scale;
+    canvas.height = out.rows * CELL * scale;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    URL.revokeObjectURL(url);
+    canvas.toBlob(b => downloadBlob(b, "janflower-pattern.png"), "image/png");
+  };
+  img.src = url;
+});
+
+/* ───────────────────────── 리사이즈 대응 ───────────────────────── */
+window.addEventListener("resize", scheduleRender);
+if (typeof ResizeObserver !== "undefined"){
+  new ResizeObserver(scheduleRender).observe(stageEl);
+}
+
+/* ───────────────────────── 시작 ───────────────────────── */
+renderShapes();
+renderColors();
+renderLibrary();
+gridBtn.classList.add("on");           // 격자 기본 켜짐 표시
+setLibrary(window.innerWidth > 760);   // 데스크톱: 열고 시작 / 모바일: 닫고 시작
+setPanel(window.innerWidth > 760);     // 모바일: 시트 닫고 시작 (하단 툴바가 기본 도구)
+
+// 첫 화면: 꽃밭을 원점 중앙에 깔고, 내용에 맞춰 보여주기
+(function init(){
+  const garden = parsedPresets.find(p => p.name === "꽃밭");
+  for (const c of garden.cells) setCell(c.x - 6, c.y - 3, c);
+  requestAnimationFrame(() => { fitContent(); });
+})();
+</script>
+</body>
+</html>
