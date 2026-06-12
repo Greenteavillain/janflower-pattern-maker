@@ -830,6 +830,8 @@ function setPlacing(parsed){
   stageEl.classList.toggle("placingmode", !!parsed);
   if (parsed) document.getElementById("placeName").textContent = parsed.name;
   renderLibrary();
+  renderShapes();   // 배치 모드일 땐 팔레트 선택 표시를 비움 (해제 시 복원)
+  renderColors();
   scheduleRender();
 }
 
@@ -1151,7 +1153,7 @@ function paletteIcon(sh){
   const s = 30;
   if (sh === "E"){
     return `<svg width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">
-      <rect x="1.5" y="1.5" width="${s-3}" height="${s-3}" rx="4" fill="${BG}"
+      <rect x="1.5" y="1.5" width="${s-3}" height="${s-3}" rx="4" fill="none"
             stroke="rgba(61,75,58,.4)" stroke-width="1.6" stroke-dasharray="4 4"/></svg>`;
   }
   const rot = rotatable(sh) ? state.brush.rot : 0;
@@ -1165,8 +1167,10 @@ function buildShapeRow(wrap){
     b.className = "shape-btn";
     b.title = label;
     b.setAttribute("aria-label", label);
-    const selected = (sh === "E") ? state.tool === "erase"
-                                  : state.tool === "paint" && state.brush.sh === sh;
+    const selected = !state.placing && (
+      sh === "E" ? state.tool === "erase"
+                 : state.tool === "paint" && state.brush.sh === sh
+    );
     if (selected) b.classList.add("selected");
     b.innerHTML = paletteIcon(sh);
     b.addEventListener("click", () => {
@@ -1198,11 +1202,13 @@ function buildColorRow(wrap){
   wrap.innerHTML = "";
   Object.keys(COLORS).forEach(k => {
     const b = document.createElement("button");
-    b.className = "swatch" + (state.brush.col === k ? " selected" : "");
+    b.className = "swatch" + (!state.placing && state.brush.col === k ? " selected" : "");
     b.style.background = COLORS[k];
     b.title = COLOR_NAMES[k];
     b.setAttribute("aria-label", COLOR_NAMES[k]);
     b.addEventListener("click", () => {
+      setPlacing(null);                 // 색 선택 = 배치 모드 종료
+      setHand(false);
       state.brush.col = k;
       state.tool = "paint";
       renderColors();
