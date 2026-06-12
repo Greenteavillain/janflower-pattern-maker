@@ -1483,12 +1483,17 @@ setGrid(true);                         // 격자 기본 켜짐
 setLibrary(false);                     // 시작은 패널을 닫아 깔끔한 캔버스로
 setPanel(false);
 
-// 첫 화면: 꽃밭을 100%(원점 중앙)로 보여주기
+// 첫 화면: 꽃밭을 중앙에 보여주기 (데스크탑 100% / 모바일 40%).
+// 뷰포트 크기가 확정될 때까지(사용자가 보드를 처음 만지기 전) 리사이즈마다 다시 맞춘다.
 (function init(){
   const garden = parsedPresets.find(p => p.name === "꽃밭");
   for (const c of garden.cells) setCell(c.x - 4, c.y - 3, c);
-  requestAnimationFrame(() => {
+
+  let framed = false;
+  function frameGarden(){
+    if (framed) return;
     const r = boardRect();
+    if (!r.width || !r.height) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const c of state.cells.values()){
       if (c.x < minX) minX = c.x;
@@ -1496,11 +1501,19 @@ setPanel(false);
       if (c.x > maxX) maxX = c.x;
       if (c.y > maxY) maxY = c.y;
     }
-    state.cam.z = 1;
-    state.cam.x = (minX + maxX + 1) / 2 * CELL - r.width  / 2;
-    state.cam.y = (minY + maxY + 1) / 2 * CELL - r.height / 2;
+    const z = r.width <= 760 ? 0.4 : 1;   // 모바일(≤760)은 40% — 꽃밭이 모바일 화면보다 넓음
+    state.cam.z = z;
+    state.cam.x = (minX + maxX + 1) / 2 * CELL - r.width  / (2 * z);
+    state.cam.y = (minY + maxY + 1) / 2 * CELL - r.height / (2 * z);
     scheduleRender();
-  });
+  }
+  // 사용자가 캔버스를 처음 만지는 순간부터 자동 맞춤 중단
+  boardEl.addEventListener("pointerdown", () => { framed = true; }, { once: true });
+  window.addEventListener("resize", frameGarden);
+  // 뷰포트/레이아웃이 늦게 확정되는 경우(모바일 로드·회전 등)에도 다시 맞춤
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(frameGarden).observe(stageEl);
+  requestAnimationFrame(frameGarden);
+  [0, 80, 250, 600].forEach(t => setTimeout(frameGarden, t));   // 폭이 늦게 확정될 때 대비 재시도
 })();
 </script>
 </body>
