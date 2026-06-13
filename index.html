@@ -635,7 +635,6 @@
 /* ───────────────────────── 상수 & 상태 ───────────────────────── */
 const CELL = 60;                       // 월드 좌표계에서 셀 한 변
 const COLORS = { p:"#ff92ce", y:"#ffcc66", g:"#548962" };
-const CURSOR_SCALE = 0.8;   // 협업 잎 커서·이름표 전체 크기 배율 (이름도 같이 줄어듦)
 // 협업(커서·호버·키보드)은 데스크톱 전용 — 터치 기기는 막음(모바일 협업은 추후)
 const IS_TOUCH = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || ("ontouchstart" in window && !window.matchMedia("(pointer: fine)").matches);
 const COLOR_NAMES = { p:"jf pink", y:"jf yellow", g:"jf green" };
@@ -1038,40 +1037,41 @@ function render(){
     const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
     // 배경색 밝기에 따라 글자색 선택(노랑·분홍 같은 밝은 색엔 흰 글자가 안 보임)
     const inkOn = (hex) => { const h = hex.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r + 0.587*g + 0.114*b) > 165 ? "#3d6249" : "#fff"; };
+    // 커서 장식 크기: 배율(scale) 대신 실제 px로 지정 → 글자 또렷(줌 보정 k2만 적용). 여기서 따로 조절.
+    const CH = 18, CR = CH / 2, CFONT = 10, CGAP = 6;   // 높이·모서리반지름·폰트·커서와의 간격
     // 말풍선 경로: 좌상단+우하단만 사분원(r=h/2), 나머지 직각(점대칭)
     const bubblePath = (w, h, r) => `M${r} 0 L${w} 0 L${w} ${h - r} A${r} ${r} 0 0 1 ${w - r} ${h} L0 ${h} L0 ${r} A${r} ${r} 0 0 1 ${r} 0 Z`;
-    // 채팅 말풍선: 보낸이 색 채움·흰 글자. 커서 끝과 왼쪽 정렬·살짝 위(0,-28). 등장 시 좌하단에서 팝.
+    // 채팅 말풍선: 보낸이 색 채움·흰 글자. 커서 끝과 왼쪽 정렬·살짝 위. 등장 시 좌하단에서 팝.
     const bubble = (x, y, b) => {
-      const h = 22, r = h / 2, pad = 8, w = textW(b.text, 11) + pad * 2;
+      const h = CH, r = CR, pad = 8, w = textW(b.text, CFONT) + pad * 2;
       const e = b.start ? Math.min(1, (nowMs - b.start) / 340) : 1;                       // 0..1 등장 진행
       const sc = e < 0.62 ? (0.55 + 0.82 * e) : (1.06 - 0.06 * ((e - 0.62) / 0.38));      // .55→1.06→1 (살짝 오버슈트)
       const op = Math.min(1, e * 2.2);
       return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none">`
-        + `<g transform="translate(0,-28)" opacity="${op.toFixed(2)}">`
+        + `<g transform="translate(0,${-(h + CGAP)})" opacity="${op.toFixed(2)}">`
         + `<g transform="translate(0,${h}) scale(${sc.toFixed(3)}) translate(0,${-h})">`
         + `<path d="${bubblePath(w, h, r)}" fill="${b.color}"/>`
-        + `<text x="${pad}" y="${r + 3.8}" font-size="11" font-weight="700" fill="#fff">${escapeHtml(b.text)}</text>`
+        + `<text x="${pad}" y="${(h/2 + CFONT*0.35).toFixed(1)}" font-size="${CFONT}" font-weight="700" fill="#fff">${escapeHtml(b.text)}</text>`
         + `</g></g></g>`;
     };
     // 입력 중 표시: 점 3개가 위아래로 (시간 기반이라 보드 재렌더와 무관하게 부드러움)
-    const dotY = (i) => { const cyc = 1.05; const f = ((((nowMs/1000) - i*0.16) % cyc) + cyc) % cyc / cyc; return f > 0.6 ? 0 : -6 * Math.sin((f/0.6) * Math.PI); };
+    const dotY = (i) => { const cyc = 1.05; const f = ((((nowMs/1000) - i*0.16) % cyc) + cyc) % cyc / cyc; return f > 0.6 ? 0 : -5 * Math.sin((f/0.6) * Math.PI); };
     const typingBubble = (x, y, color) => {
-      const h = 22, r = h / 2, dr = 3, gap = 5, padX = 10, w = padX*2 + dr*2*3 + gap*2, cy0 = h/2 + 2;
+      const h = CH, r = CR, dr = 2.5, gap = 4, padX = 9, w = padX*2 + dr*2*3 + gap*2, cy0 = h/2 + 1.5;
       let dots = "";
       for (let i = 0; i < 3; i++) dots += `<circle cx="${padX + dr + i*(dr*2+gap)}" cy="${(cy0 + dotY(i)).toFixed(2)}" r="${dr}" fill="#fff"/>`;
-      return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(0,-28)">`
+      return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(0,${-(h + CGAP)})">`
         + `<path d="${bubblePath(w, h, r)}" fill="${color}"/>${dots}</g></g>`;
     };
     // 이름표(잎) 커서: 우상단+좌하단만 사분원(r=높이/2), 좌상단·우하단은 직각(말풍선의 위아래 뒤집힌 점대칭).
     // 좌상단 직각 꼭짓점(0,0)이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
-    const H = 22, LR = H / 2;
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
-      const W = nm ? textW(nm, 12) + 16 : H;        // 이름 폭 + 좌우 여백(각 8px)
-      const d = `M0 0 L${W - LR} 0 A${LR} ${LR} 0 0 1 ${W} ${LR} L${W} ${H} L${LR} ${H} A${LR} ${LR} 0 0 1 0 ${H - LR} Z`;
-      s += `<g transform="translate(${cu.x},${cu.y}) scale(${k2 * CURSOR_SCALE})" pointer-events="none">`
+      const W = nm ? textW(nm, CFONT) + 16 : CH;    // 이름 폭 + 좌우 여백(각 8px)
+      const d = `M0 0 L${W - CR} 0 A${CR} ${CR} 0 0 1 ${W} ${CR} L${W} ${CH} L${CR} ${CH} A${CR} ${CR} 0 0 1 0 ${CH - CR} Z`;
+      s += `<g transform="translate(${cu.x},${cu.y}) scale(${k2})" pointer-events="none">`
         + `<path d="${d}" fill="${cu.color}"/>`
-        + (nm ? `<text x="${W/2}" y="${H/2 + 4.2}" font-size="12" font-weight="700" fill="${inkOn(cu.color)}" text-anchor="middle">${escapeHtml(nm)}</text>` : "")
+        + (nm ? `<text x="${W/2}" y="${(CH/2 + CFONT*0.35).toFixed(1)}" font-size="${CFONT}" font-weight="700" fill="${inkOn(cu.color)}" text-anchor="middle">${escapeHtml(nm)}</text>` : "")
         + `</g>`;
       const ty = typingUsers.get(cu.uid), b = chatBubbles.get(cu.uid);
       if (ty && ty.until > nowMs) s += typingBubble(cu.x, cu.y, ty.color || cu.color);   // 입력중이면 점점점
@@ -2184,11 +2184,11 @@ function sendCursor(clientX, clientY){
 const SOLO_LEAF = "#548962";   // 팔레트 색을 못 읽을 때의 기본값
 let myLeafEl = null;
 function showMyLeaf(){
-  const H = 22, LR = H / 2;   // 우상단+좌하단 사분원, 좌상단(끝)·우하단 직각
+  const H = 18, LR = H / 2;   // 실제 크기로(배율X) → 또렷. 우상단+좌하단 사분원, 좌상단(끝)·우하단 직각
   const d = `M0 0 L${H - LR} 0 A${LR} ${LR} 0 0 1 ${H} ${LR} L${H} ${H} L${LR} ${H} A${LR} ${LR} 0 0 1 0 ${H - LR} Z`;
   if (!myLeafEl){ myLeafEl = document.createElement("div"); myLeafEl.id = "myLeaf"; document.body.appendChild(myLeafEl); }
   const col = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);   // 솔로: 선택한 팔레트 색
-  myLeafEl.innerHTML = `<svg width="${H * CURSOR_SCALE}" height="${H * CURSOR_SCALE}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.5"/></svg>`;
+  myLeafEl.innerHTML = `<svg width="${H}" height="${H}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.3"/></svg>`;
   boardEl.style.cursor = "none";          // 보드 위에선 OS 커서 숨김
 }
 function moveMyLeaf(cx, cy){
