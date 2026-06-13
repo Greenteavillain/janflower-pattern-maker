@@ -698,6 +698,7 @@ let renderQueued = false;
 let hoverCell = null;   // 배치 모드 고스트 위치
 
 function scheduleRender(){
+  saveStateSoon();                       // 변경 사항을 곧 로컬에 저장 (디바운스)
   if (renderQueued) return;
   renderQueued = true;
   requestAnimationFrame(() => { renderQueued = false; render(); });
@@ -786,6 +787,43 @@ function undo(){
   if (prev === undefined) return;
   state.cells = new Map(JSON.parse(prev).map(c => [key(c.x, c.y), c]));
   scheduleRender();
+}
+
+/* ───────────────────────── 로컬 저장 (새로고침해도 유지) ───────────────────────── */
+const STORE_KEY = "janflower:v1";
+function saveState(){
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      cells: [...state.cells.values()],
+      cam: state.cam,
+      bgOn: state.bgOn,
+    }));
+  } catch (e) { /* 용량 초과·프라이빗 모드 등은 조용히 무시 */ }
+}
+let saveTimer = null;
+function saveStateSoon(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 400);   // 마지막 변경 0.4초 뒤 저장
+}
+function loadState(){
+  try {
+    const raw = localStorage.getItem(STORE_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.cells)) return false;
+    state.cells = new Map(
+      data.cells
+        .filter(c => c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.sh && c.col)
+        .map(c => [key(c.x, c.y), { x:c.x, y:c.y, sh:c.sh, rot:c.rot || 0, col:c.col }])
+    );
+    if (data.cam && Number.isFinite(data.cam.x) && Number.isFinite(data.cam.y) && Number.isFinite(data.cam.z)){
+      state.cam.x = data.cam.x;
+      state.cam.y = data.cam.y;
+      state.cam.z = Math.min(ZMAX, Math.max(ZMIN, data.cam.z));
+    }
+    if (typeof data.bgOn === "boolean") state.bgOn = data.bgOn;
+    return true;
+  } catch (e) { return false; }
 }
 
 /* ───────────────────────── 셀 조작 ───────────────────────── */
@@ -1474,6 +1512,9 @@ window.addEventListener("resize", scheduleRender);
 if (typeof ResizeObserver !== "undefined"){
   new ResizeObserver(scheduleRender).observe(stageEl);
 }
+// 탭을 닫거나 백그라운드로 갈 때 마지막 상태를 즉시 저장 (디바운스 누락 방지)
+window.addEventListener("pagehide", saveState);
+document.addEventListener("visibilitychange", () => { if (document.hidden) saveState(); });
 
 /* ───────────────────────── 시작 ───────────────────────── */
 renderShapes();
@@ -1483,11 +1524,22 @@ setGrid(true);                         // 격자 기본 켜짐
 setLibrary(false);                     // 시작은 패널을 닫아 깔끔한 캔버스로
 setPanel(false);
 
-// 첫 화면: 꽃밭을 중앙에 보여주기 (데스크탑 100% / 모바일 40%).
-// 뷰포트 크기가 확정될 때까지(사용자가 보드를 처음 만지기 전) 리사이즈마다 다시 맞춘다.
+// 첫 화면: 저장된 작업이 있으면 복원, 없으면(첫 방문/콜드리셋) 꽃밭을 중앙에
+// (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
 (function init(){
-  const garden = parsedPresets.find(p => p.name === "꽃밭");
-  for (const c of garden.cells) setCell(c.x - 4, c.y - 3, c);
+  const restored = loadState();
+  if (!restored){
+    const garden = parsedPresets.find(p => p.name === "꽃밭");
+    for (const c of garden.cells) setCell(c.x - 4, c.y - 3, c);
+  }
+  // 저장된 배경 상태를 화면에 반영
+  stageEl.classList.toggle("transparent", !state.bgOn);
+  bgBtn.classList.toggle("on", !state.bgOn);
+
+  if (restored){
+    scheduleRender();            // 저장해 둔 줌·위치 그대로 보여주기
+    return;
+  }
 
   let framed = false;
   function frameGarden(){
