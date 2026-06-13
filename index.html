@@ -1032,6 +1032,7 @@ function render(){
     const k2 = 1 / state.cam.z;
     const nowMs = performance.now();
     for (const [uid, t] of typingUsers) if (t.until <= nowMs) typingUsers.delete(uid);   // 만료된 입력중 정리
+    for (const [uid, b] of chatBubbles) if (b.until <= nowMs) chatBubbles.delete(uid);   // 만료된 말풍선 정리
     // 글자수 기반 폭 추정: 한글/CJK는 폰트 크기만큼, 라틴/숫자는 ~0.56배
     const WIDE = /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿＀-￯]/;
     const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
@@ -2171,6 +2172,8 @@ function sendCursor(clientX, clientY){
   if (!rtChannel) return;
   myCursorW = screenToWorld(clientX, clientY);   // 내 위치(말풍선용) 항상 갱신
   const now = performance.now();
+  const mb = chatBubbles.get(myUid);
+  if (mb && mb.until > now) scheduleRender();      // 내 말풍선이 내 커서를 따라오게 재렌더
   if (now - cursorThrottle < 60) return;          // ~16/s, broadcast (presence rate limit 회피)
   cursorThrottle = now;
   rtChannel.send({ type:"broadcast", event:"cursor", payload:{ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) } });
