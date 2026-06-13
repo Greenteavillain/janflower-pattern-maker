@@ -1043,15 +1043,13 @@ function render(){
         + `<text x="${pad}" y="${r + 3.8}" font-size="11" font-weight="700" fill="#fff">${escapeHtml(b.text)}</text>`
         + `</g></g>`;
     };
-    // 잎 모양 커서: 사분원 두 개(왼쪽·오른쪽 캡)가 겹친 형태. 평소엔 작은 잎,
-    // 이름이 있으면 가운데에 사각형이 끼어 너비가 늘며 이름이 들어감(커서=이름표).
-    // 끝점 A(0,0)=좌상단 직각 꼭짓점이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
-    const H = 22;                                  // 커서 높이(화면 고정 px)
+    // 이름표(잎) 커서: 우상단+좌하단만 사분원(r=높이/2), 좌상단·우하단은 직각(말풍선의 위아래 뒤집힌 점대칭).
+    // 좌상단 직각 꼭짓점(0,0)이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
+    const H = 22, LR = H / 2;                       // 커서 높이 · 모서리 반지름
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
-      const M = nm ? textW(nm, 12) : 0;            // 가운데 사각형 너비 = 이름 폭 (좌우 여백은 사분원 캡이 채워줌)
-      const W = M + H;                             // 전체 너비
-      const d = `M0 0 L${M} 0 A${H} ${H} 0 0 1 ${W} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
+      const W = (nm ? textW(nm, 12) : 0) + H;       // 이름 폭 + 좌우 여백(각 H/2)
+      const d = `M0 0 L${W - LR} 0 A${LR} ${LR} 0 0 1 ${W} ${LR} L${W} ${H} L${LR} ${H} A${LR} ${LR} 0 0 1 0 ${H - LR} Z`;
       s += `<g transform="translate(${cu.x},${cu.y}) scale(${k2 * CURSOR_SCALE})" pointer-events="none">`
         + `<path d="${d}" fill="${cu.color}"/>`
         + (nm ? `<text x="${W/2}" y="${H/2 + 4.2}" font-size="12" font-weight="700" fill="${inkOn(cu.color)}" text-anchor="middle">${escapeHtml(nm)}</text>` : "")
@@ -2162,8 +2160,8 @@ function sendCursor(clientX, clientY){
 const SOLO_LEAF = "#548962";   // 팔레트 색을 못 읽을 때의 기본값
 let myLeafEl = null;
 function showMyLeaf(){
-  const H = 22;
-  const d = `M0 0 L0 0 A${H} ${H} 0 0 1 ${H} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
+  const H = 22, LR = H / 2;   // 우상단+좌하단 사분원, 좌상단(끝)·우하단 직각
+  const d = `M0 0 L${H - LR} 0 A${LR} ${LR} 0 0 1 ${H} ${LR} L${H} ${H} L${LR} ${H} A${LR} ${LR} 0 0 1 0 ${H - LR} Z`;
   if (!myLeafEl){ myLeafEl = document.createElement("div"); myLeafEl.id = "myLeaf"; document.body.appendChild(myLeafEl); }
   const col = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);   // 솔로: 선택한 팔레트 색
   myLeafEl.innerHTML = `<svg width="${H * CURSOR_SCALE}" height="${H * CURSOR_SCALE}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.5"/></svg>`;
