@@ -219,7 +219,7 @@
   .g-del:hover{color:#d6539f;}
   .gallery-item:hover .g-del{display:flex;}
   .gallery-item:hover{box-shadow:var(--shadow); transform:translateY(-1px);}
-  .gallery-item svg{width:100%; height:auto; display:block; border-radius:6px;}
+  .gallery-item svg{width:100%; height:auto; display:block;}
   .gallery-item .g-title{
     font-size:11.5px; font-weight:600; text-align:center; line-height:1.25; align-self:stretch;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -1915,9 +1915,11 @@ function cellsThumb(cells){
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const c of cells){ if (c.x<minX)minX=c.x; if (c.y<minY)minY=c.y; if (c.x>maxX)maxX=c.x; if (c.y>maxY)maxY=c.y; }
   const cols = maxX-minX+1, rows = maxY-minY+1, S = 30;
-  let s = `<svg viewBox="0 0 ${cols*S} ${rows*S}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">`;
+  const side = Math.max(cols, rows) * S;                       // 정사각 캔버스 (모든 썸네일 동일 크기)
+  const offX = (side - cols*S) / 2, offY = (side - rows*S) / 2; // 패턴을 가운데 정렬
+  let s = `<svg viewBox="0 0 ${side} ${side}" xmlns="http://www.w3.org/2000/svg">`;
   for (const c of cells){
-    s += `<g transform="translate(${(c.x-minX)*S},${(c.y-minY)*S})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], S, "export")}</g>`;
+    s += `<g transform="translate(${offX + (c.x-minX)*S},${offY + (c.y-minY)*S})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], S, "export")}</g>`;
   }
   return s + `</svg>`;
 }
