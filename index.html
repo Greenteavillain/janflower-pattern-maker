@@ -126,6 +126,59 @@
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
   @media (max-width:760px){ .toast{bottom:16px;} }
 
+  /* 영역 선택 바 (갤러리 업로드) */
+  .selbar{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:7;
+    display:none; align-items:center; gap:6px;
+    border-radius:8px; padding:4px 4px 4px 12px;
+    font-size:12.5px; font-weight:600; white-space:nowrap; max-width:calc(100% - 24px);
+  }
+  .selbar.visible{display:flex;}
+  .selbar .nm{color:var(--green); margin-right:2px;}
+  .sbtn{
+    background:var(--green); color:var(--beige);
+    border-radius:6px; padding:0 12px; height:28px; font-size:12px; font-weight:700;
+    display:flex; align-items:center;
+  }
+  .sbtn:hover{filter:brightness(1.06);}
+  .sbtn[hidden]{display:none;}
+  @media (max-width:760px){ .selbar{top:56px;} }
+
+  /* 갤러리 오버레이 */
+  .gallery-overlay{
+    position:absolute; inset:0; z-index:20;
+    display:none; align-items:center; justify-content:center;
+    background:rgba(61,75,58,.30); padding:20px;
+  }
+  .gallery-overlay.open{display:flex;}
+  .gallery-panel{
+    width:min(720px, 100%); max-height:100%;
+    display:flex; flex-direction:column; border-radius:16px; overflow:hidden;
+  }
+  .gallery-head{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 8px 12px 16px; border-bottom:1px solid var(--hair); flex:0 0 auto;
+  }
+  .gallery-head .gt{font-size:14px; font-weight:800;}
+  .gallery-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(140px,1fr)); gap:12px;
+    padding:14px; overflow-y:auto; scrollbar-gutter:stable; flex:1 1 auto;
+  }
+  .gallery-item{
+    border-radius:10px; padding:8px; cursor:pointer;
+    display:flex; flex-direction:column; gap:6px; align-items:center;
+    border:1px solid var(--hair); background:var(--beige);
+    transition:box-shadow .1s, transform .1s;
+  }
+  .gallery-item:hover{box-shadow:var(--shadow); transform:translateY(-1px);}
+  .gallery-item svg{width:100%; height:auto; display:block; border-radius:6px;}
+  .gallery-item .g-title{
+    font-size:11.5px; font-weight:600; text-align:center; line-height:1.25; align-self:stretch;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .gallery-empty{grid-column:1/-1; padding:48px 20px; text-align:center; opacity:.6; font-size:13px; line-height:1.6;}
+  @media (max-width:760px){ .gallery-grid{grid-template-columns:repeat(auto-fill, minmax(104px,1fr)); gap:10px;} }
+
   /* 배치 모드 바 */
   .placebar{
     position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5;
@@ -290,6 +343,13 @@
   <div class="stage" id="stage">
     <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
     <button class="zoomhud surface" id="zoomHud" title="100%로 재설정">100%</button>
+    <div class="selbar surface" id="selbar">
+      <span class="nm" id="selInfo">올릴 영역을 드래그하세요</span>
+      <button class="sbtn" id="selUpload" hidden>올리기</button>
+      <button class="ibtn" id="selCancel" title="취소 (Esc)">
+        <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+      </button>
+    </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="placebar surface" id="placebar">
       <span class="nm" id="placeName"></span>
@@ -377,6 +437,8 @@
       <button class="mrow" id="undoBtn">실행취소<span class="kbd">Ctrl+Z</span></button>
       <hr class="divider">
       <button class="mrow" id="shareBtn">🔗 링크 공유</button>
+      <button class="mrow" id="galleryUploadBtn">🖼️ 갤러리에 올리기</button>
+      <button class="mrow" id="galleryBrowseBtn">🌸 갤러리 구경</button>
       <button class="mrow" id="svgBtn">SVG 저장</button>
       <button class="mrow" id="pngBtn">PNG 저장</button>
     </div>
@@ -400,6 +462,18 @@
       <button class="ibtn" id="mUndo" title="실행취소">
         <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.8 3.2 7.6 7 11.4"/><path d="M3.2 7.6h8.6a4.6 4.6 0 0 1 0 9.2H8.2"/></svg>
       </button>
+    </div>
+  </div>
+  <!-- 갤러리 오버레이 -->
+  <div class="gallery-overlay" id="galleryOverlay">
+    <div class="gallery-panel surface">
+      <div class="gallery-head">
+        <span class="gt">🖼️ 갤러리</span>
+        <button class="ibtn" id="galleryClose" title="닫기 (Esc)">
+          <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+        </button>
+      </div>
+      <div class="gallery-grid" id="galleryGrid"></div>
     </div>
   </div>
 </main>
@@ -431,6 +505,8 @@ const state = {
   bgOn: true,
   showGrid: true,
   placing: null,                       // null | {name, cells:[{x,y,sh,rot,col}], cols, rows}
+  selectMode: false,                   // 갤러리 업로드용 영역 선택 모드
+  selRect: null,                       // {x0,y0,x1,y1} 셀 인덱스(포함)
   undo: [],
 };
 
@@ -788,6 +864,15 @@ function render(){
     }
   }
 
+  // 영역 선택 박스 (갤러리 업로드용)
+  if (state.selectMode && state.selRect){
+    const R = state.selRect;
+    const rx = R.x0 * CELL, ry = R.y0 * CELL;
+    const rw = (R.x1 - R.x0 + 1) * CELL, rh = (R.y1 - R.y0 + 1) * CELL;
+    s += `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}" fill="${COLORS.g}" fill-opacity="0.12"
+          stroke="${COLORS.g}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+  }
+
   boardEl.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
   boardEl.innerHTML = s;
   zoomHud.textContent = `${Math.round(state.cam.z * 100)}%`;
@@ -911,6 +996,7 @@ function paintAt(x, y, initial){
 
 /* ───────────────────────── 배치 모드 ───────────────────────── */
 function setPlacing(parsed){
+  if (parsed && state.selectMode) setSelectMode(false);
   state.placing = parsed;
   hoverCell = null;
   placebar.classList.toggle("visible", !!parsed);
@@ -1016,6 +1102,8 @@ let pinch = null;
 let spaceDown = false;
 let placeDragPointer = null;   // 터치 배치: 끌어서 놓기
 let axisDragPointer = null;    // 미러 축 드래그
+let selecting = false;         // 영역 선택 드래그 중
+let selStart = null;           // 선택 시작 셀
 
 function updateCursor(){
   stageEl.classList.toggle("panmode", (spaceDown || state.hand) && !panPointer);
@@ -1062,6 +1150,15 @@ boardEl.addEventListener("pointerdown", (e) => {
     return;
   }
   if (e.button !== 0) return;
+
+  // 영역 선택 모드 (갤러리 업로드) — 칠하기 대신 박스 드래그
+  if (state.selectMode){
+    selecting = true;
+    selStart = cellFromEvent(e);
+    state.selRect = { x0: selStart.x, y0: selStart.y, x1: selStart.x, y1: selStart.y };
+    scheduleRender();
+    return;
+  }
 
   // 미러 축 잡기 (배치·칠하기보다 우선)
   if (nearAxis(e.clientX, e.pointerType)){
@@ -1124,6 +1221,18 @@ boardEl.addEventListener("pointermove", (e) => {
     return;
   }
 
+  // 영역 선택 드래그 (격자 스냅)
+  if (selecting){
+    const c = cellFromEvent(e);
+    state.selRect = {
+      x0: Math.min(selStart.x, c.x), y0: Math.min(selStart.y, c.y),
+      x1: Math.max(selStart.x, c.x), y1: Math.max(selStart.y, c.y),
+    };
+    updateSelbar();
+    scheduleRender();
+    return;
+  }
+
   // 마우스 호버: 축 근처에서 좌우 이동 커서
   if (e.pointerType === "mouse" && e.buttons === 0){
     stageEl.classList.toggle("axishover", nearAxis(e.clientX, "mouse"));
@@ -1157,6 +1266,8 @@ boardEl.addEventListener("pointermove", (e) => {
 
 ["pointerup", "pointercancel"].forEach(ev =>
   boardEl.addEventListener(ev, (e) => {
+    // 영역 선택 드래그 끝 → 선택 확정
+    if (selecting){ selecting = false; updateSelbar(); }
     // 터치 배치 끝 → 그 자리에 찍기
     if (ev === "pointerup" && placeDragPointer === e.pointerId){
       placeStampAt(stampAnchor());
@@ -1202,6 +1313,8 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape"){
+    if (galleryOverlay.classList.contains("open")){ closeGallery(); return; }
+    if (state.selectMode){ setSelectMode(false); return; }
     if (state.placing) setPlacing(null);
     return;
   }
@@ -1263,6 +1376,7 @@ function buildShapeRow(wrap){
     b.addEventListener("click", () => {
       setPlacing(null);                 // 그리기 도구 선택 = 배치 모드 종료
       setHand(false);
+      if (state.selectMode) setSelectMode(false);
       if (sh === "E"){
         state.tool = "erase";
       } else if (state.tool === "paint" && state.brush.sh === sh && rotatable(sh)){
@@ -1296,6 +1410,7 @@ function buildColorRow(wrap){
     b.addEventListener("click", () => {
       setPlacing(null);                 // 색 선택 = 배치 모드 종료
       setHand(false);
+      if (state.selectMode) setSelectMode(false);
       state.brush.col = k;
       state.tool = "paint";
       renderColors();
@@ -1582,6 +1697,120 @@ async function doShare(){
   }
 }
 document.getElementById("shareBtn").addEventListener("click", doShare);
+
+/* ───────────────────────── 영역 선택 + 갤러리 ───────────────────────── */
+const selbar = document.getElementById("selbar");
+const selInfo = document.getElementById("selInfo");
+const selUpload = document.getElementById("selUpload");
+const galleryOverlay = document.getElementById("galleryOverlay");
+const galleryGrid = document.getElementById("galleryGrid");
+
+function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m])); }
+function syncBgDom(){
+  stageEl.classList.toggle("transparent", !state.bgOn);
+  bgBtn.classList.toggle("on", !state.bgOn);
+}
+
+function selCells(){
+  if (!state.selRect) return [];
+  const R = state.selRect, out = [];
+  for (const c of state.cells.values()){
+    if (c.x >= R.x0 && c.x <= R.x1 && c.y >= R.y0 && c.y <= R.y1) out.push(c);
+  }
+  return out;
+}
+function updateSelbar(){
+  if (!state.selRect){ selInfo.textContent = "올릴 영역을 드래그하세요"; selUpload.hidden = true; return; }
+  const R = state.selRect, n = selCells().length;
+  selInfo.textContent = `${R.x1 - R.x0 + 1}×${R.y1 - R.y0 + 1}칸 · 도형 ${n}개`;
+  selUpload.hidden = n === 0;
+}
+function setSelectMode(on){
+  state.selectMode = on;
+  selecting = false;
+  state.selRect = null;
+  if (on){ setPlacing(null); setHand(false); setPanel(false); if (window.innerWidth <= 760) setLibrary(false); }
+  selbar.classList.toggle("visible", on);
+  stageEl.classList.toggle("selectmode", on);
+  if (on) toast("올릴 부분을 네모로 드래그하세요 ✏️", 2800);
+  updateSelbar();
+  scheduleRender();
+}
+
+async function uploadToGallery(cells, title){
+  let minX = Infinity, minY = Infinity;
+  for (const c of cells){ if (c.x < minX) minX = c.x; if (c.y < minY) minY = c.y; }
+  const norm = cells.map(c => ({ x: c.x - minX, y: c.y - minY, sh: c.sh, rot: c.rot, col: c.col }));
+  const body = { data: { cells: norm, bgOn: state.bgOn }, title: title || null, gallery: true };
+  const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns`, {
+    method: "POST", headers: { ...SB_HEADERS, "Prefer": "return=representation" }, body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("upload failed: " + res.status);
+  return (await res.json())[0].id;
+}
+async function doGalleryUpload(){
+  const cells = selCells();
+  if (!cells.length){ toast("선택한 영역에 그림이 없어요 🌱"); return; }
+  const title = (window.prompt("작품 이름 (선택)", "") || "").trim().slice(0, 40);
+  toast("갤러리에 올리는 중…", 8000);
+  try { await uploadToGallery(cells, title); toast("🖼️ 갤러리에 올렸어요!", 3200); setSelectMode(false); }
+  catch (e){ toast("업로드 실패 — 인터넷 연결을 확인해 주세요", 3200); }
+}
+
+// 셀 배열 → 썸네일 SVG
+function cellsThumb(cells){
+  if (!cells || !cells.length) return "";
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of cells){ if (c.x<minX)minX=c.x; if (c.y<minY)minY=c.y; if (c.x>maxX)maxX=c.x; if (c.y>maxY)maxY=c.y; }
+  const cols = maxX-minX+1, rows = maxY-minY+1, S = 30;
+  let s = `<svg viewBox="0 0 ${cols*S} ${rows*S}" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">`;
+  for (const c of cells){
+    s += `<g transform="translate(${(c.x-minX)*S},${(c.y-minY)*S})">${shapeMarkup(c.sh, c.rot, COLORS[c.col], S, "export")}</g>`;
+  }
+  return s + `</svg>`;
+}
+
+function closeGallery(){ galleryOverlay.classList.remove("open"); }
+function loadGalleryItem(row){
+  if (!applyPattern(row.data)){ toast("불러오기 실패"); return; }
+  allowSave = false;   // 구경 중엔 저장 잠금, 그리기 시작하면 내 것으로
+  boardEl.addEventListener("pointerdown", () => { allowSave = true; }, { once: true });
+  closeGallery();
+  syncBgDom();
+  fitContent(); [80, 250].forEach(t => setTimeout(fitContent, t));
+  toast("🌸 불러왔어요 · 그리면 내 것으로 저장돼요", 3400);
+}
+async function openGallery(){
+  setSelectMode(false); setPlacing(null);
+  galleryOverlay.classList.add("open");
+  galleryGrid.innerHTML = `<div class="gallery-empty">불러오는 중…</div>`;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns?gallery=eq.true&order=created_at.desc&limit=60&select=id,title,data`, { headers: SB_HEADERS });
+    const rows = res.ok ? await res.json() : [];
+    if (!Array.isArray(rows) || !rows.length){
+      galleryGrid.innerHTML = `<div class="gallery-empty">아직 올라온 작품이 없어요.<br>첫 작품을 올려보세요! 🌷</div>`;
+      return;
+    }
+    galleryGrid.innerHTML = "";
+    for (const row of rows){
+      const cells = (row.data && row.data.cells) || [];
+      const btn = document.createElement("button");
+      btn.className = "gallery-item";
+      btn.innerHTML = `${cellsThumb(cells)}<span class="g-title">${escapeHtml(row.title || "이름 없는 꽃밭")}</span>`;
+      btn.addEventListener("click", () => loadGalleryItem(row));
+      galleryGrid.appendChild(btn);
+    }
+  } catch (e){
+    galleryGrid.innerHTML = `<div class="gallery-empty">불러오기 실패 — 인터넷 연결을 확인해 주세요</div>`;
+  }
+}
+
+document.getElementById("galleryUploadBtn").addEventListener("click", () => setSelectMode(true));
+document.getElementById("galleryBrowseBtn").addEventListener("click", openGallery);
+selUpload.addEventListener("click", doGalleryUpload);
+document.getElementById("selCancel").addEventListener("click", () => setSelectMode(false));
+document.getElementById("galleryClose").addEventListener("click", closeGallery);
+galleryOverlay.addEventListener("click", (e) => { if (e.target === galleryOverlay) closeGallery(); });
 
 /* ───────────────────────── 리사이즈 대응 ───────────────────────── */
 window.addEventListener("resize", scheduleRender);
