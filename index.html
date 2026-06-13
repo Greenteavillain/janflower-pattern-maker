@@ -157,6 +157,31 @@
   .roombar .rc{color:var(--green);}
   @media (max-width:760px){ .roombar{top:56px;} }
 
+  /* 실시간 채팅창 */
+  .chatbox{
+    position:absolute; left:14px; bottom:14px; z-index:7;
+    display:none; flex-direction:column; width:236px; max-width:calc(100% - 28px);
+    border-radius:10px; overflow:hidden;
+  }
+  .chatbox.visible{display:flex;}
+  .chat-log{
+    display:flex; flex-direction:column; gap:5px;
+    padding:10px; max-height:190px; overflow-y:auto;
+    scrollbar-width:thin; scrollbar-color:var(--hair) transparent;
+  }
+  .chat-log::-webkit-scrollbar{width:7px;}
+  .chat-log::-webkit-scrollbar-thumb{background:var(--hair); border-radius:4px; border:2px solid transparent; background-clip:padding-box;}
+  .chat-msg{font-size:12px; line-height:1.35; word-break:break-word;}
+  .chat-msg .who{font-weight:700; margin-right:4px;}
+  .chat-empty{font-size:11.5px; opacity:.45;}
+  .chat-input{
+    font-family:inherit; font-size:12.5px; color:var(--ink);
+    padding:8px 11px; border:none; border-top:1px solid var(--hair);
+    background:var(--beige); outline:none;
+  }
+  .chat-input::placeholder{color:var(--ink); opacity:.4;}
+  @media (max-width:760px){ .chatbox{width:200px; bottom:14px;} .chat-log{max-height:130px;} }
+
   /* 갤러리 오버레이 */
   .gallery-overlay{
     position:absolute; inset:0; z-index:20;
@@ -409,6 +434,10 @@
       </button>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <div class="chatbox surface" id="chatbox">
+      <div class="chat-log" id="chatLog"></div>
+      <input class="chat-input" id="chatInput" placeholder="메시지 입력…" maxlength="200" autocomplete="off">
+    </div>
     <div class="placebar surface" id="placebar">
       <span class="nm" id="placeName"></span>
       <button class="ibtn" id="placeRotate" title="도장 90° 회전 (R)">
@@ -1408,6 +1437,8 @@ boardEl.addEventListener("contextmenu", (e) => {
 
 /* ───────────────────────── 키보드 ───────────────────────── */
 document.addEventListener("keydown", (e) => {
+  const tg = e.target;
+  if (tg && (tg.tagName === "INPUT" || tg.tagName === "TEXTAREA" || tg.isContentEditable) && e.key !== "Escape") return;
   if (e.code === "Space"){
     e.preventDefault();
     if (!e.repeat){ spaceDown = true; updateCursor(); }
@@ -2031,6 +2062,35 @@ function updateRoomBar(){
   if (inRoom()) document.getElementById("roomCount").textContent = `${remoteCursors.size + 1}명 접속`;
 }
 
+function showChat(){
+  document.getElementById("chatbox").classList.add("visible");
+  document.getElementById("chatLog").innerHTML = `<div class="chat-empty">같이 그리는 친구와 대화해요</div>`;
+}
+function hideChat(){
+  document.getElementById("chatbox").classList.remove("visible");
+  document.getElementById("chatLog").innerHTML = "";
+}
+function appendChat(name, color, text){
+  const log = document.getElementById("chatLog"); if (!log) return;
+  const e0 = log.querySelector(".chat-empty"); if (e0) e0.remove();
+  const d = document.createElement("div"); d.className = "chat-msg";
+  d.innerHTML = `<span class="who" style="color:${color}">${escapeHtml(name)}</span><span>${escapeHtml(text)}</span>`;
+  log.appendChild(d);
+  while (log.children.length > 60) log.removeChild(log.firstChild);
+  log.scrollTop = log.scrollHeight;
+}
+function sendChat(){
+  const inp = document.getElementById("chatInput");
+  const text = inp.value.trim();
+  if (!text || !rtChannel) return;
+  rtChannel.send({ type:"broadcast", event:"chat", payload:{ name: myName, color: myColor, text } });
+  appendChat(myName, myColor, text);   // self:false라 내 메시지는 직접 표시
+  inp.value = "";
+}
+document.getElementById("chatInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter"){ e.preventDefault(); sendChat(); }
+});
+
 async function enterRoom(id, seed){
   setSelectMode(false); setPlacing(null); closeGallery();
   toast("같이 그리기 방 연결 중…", 9000);
@@ -2055,10 +2115,12 @@ async function enterRoom(id, seed){
   rtChannel
     .on("broadcast", { event:"paint" }, ({ payload }) => applyRemotePaint(payload.changes || []))
     .on("broadcast", { event:"sync" }, ({ payload }) => applyRemoteSync(payload.cells, payload.bgOn))
+    .on("broadcast", { event:"chat" }, ({ payload }) => appendChat(payload.name, payload.color, payload.text))
     .on("presence", { event:"sync" }, rebuildCursors)
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED"){
         await rtChannel.track({ uid: myUid, name: myName, color: myColor, x: null, y: null });
+        showChat();
         toast("같이 그리기 방! 위 '링크 복사'로 친구를 초대하세요", 4500);
         fitContent();
       }
@@ -2070,7 +2132,7 @@ function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); 
 function leaveRoom(){
   if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
   if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
-  roomId = null; remoteCursors.clear();
+  roomId = null; remoteCursors.clear(); hideChat();
   const u = new URL(location.href); u.searchParams.delete("room"); history.replaceState(null, "", u);
   allowSave = true; saveStateSoon();
   updateRoomBar(); scheduleRender();
