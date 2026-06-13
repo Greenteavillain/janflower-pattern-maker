@@ -1601,6 +1601,7 @@ function buildColorRow(wrap){
       if (state.selectMode) setSelectMode(false);
       state.brush.col = k;
       state.tool = "paint";
+      showMyLeaf();                     // 솔로 커서 잎 색을 선택한 팔레트 색으로 갱신
       renderColors();
       renderShapes();
     });
@@ -2142,14 +2143,14 @@ function sendCursor(clientX, clientY){
 }
 
 /* 내 커서(잎) — 솔로·협업 모두 보드 위 OS 커서를 숨기고 작은 잎이 마우스를 따라감(데스크탑만).
-   색: 협업 중엔 내 방 색, 솔로일 땐 초록. 테두리는 배경(베이지)색이라 꽃 위에선 잎이 또렷이 분리돼 보임. */
-const SOLO_LEAF = "#548962";
+   색: 협업 중엔 내 방 색, 솔로일 땐 선택한 팔레트 색(기본 초록). 테두리는 배경(베이지)색이라 꽃 위에선 잎이 또렷이 분리돼 보임. */
+const SOLO_LEAF = "#548962";   // 팔레트 색을 못 읽을 때의 기본값
 let myLeafEl = null;
 function showMyLeaf(){
   const H = 22;
   const d = `M0 0 L0 0 A${H} ${H} 0 0 1 ${H} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
   if (!myLeafEl){ myLeafEl = document.createElement("div"); myLeafEl.id = "myLeaf"; document.body.appendChild(myLeafEl); }
-  const col = roomConnected ? myColor : SOLO_LEAF;
+  const col = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);   // 솔로: 선택한 팔레트 색
   myLeafEl.innerHTML = `<svg width="${H * CURSOR_SCALE}" height="${H * CURSOR_SCALE}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.5"/></svg>`;
   boardEl.style.cursor = "none";          // 보드 위에선 OS 커서 숨김
 }
