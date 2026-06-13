@@ -1373,7 +1373,7 @@ boardEl.addEventListener("pointermove", (e) => {
   const prev = pointers.get(e.pointerId);
   if (prev) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (rtChannel) sendCursor(e.clientX, e.clientY);   // 협업 커서 위치 전송
-  if (roomConnected && e.pointerType !== "touch") moveMyLeaf(e.clientX, e.clientY);  // 내 잎 커서가 마우스를 따라감
+  if (e.pointerType !== "touch") moveMyLeaf(e.clientX, e.clientY);  // 내 잎 커서(솔로·협업 모두)가 마우스를 따라감
 
   // 핀치 (두 손가락) — 간격 변화가 데드존(14px)을 넘기 전까지는 순수 이동
   if (pinch && pointers.size === 2){
@@ -2140,25 +2140,22 @@ function sendCursor(clientX, clientY){
   rtChannel.send({ type:"broadcast", event:"cursor", payload:{ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) } });
 }
 
-/* 내 커서(잎) — 협업 방에서만. 보드 위 OS 커서를 숨기고 작은 잎 오버레이가 마우스를 따라감(데스크탑만). */
+/* 내 커서(잎) — 솔로·협업 모두 보드 위 OS 커서를 숨기고 작은 잎이 마우스를 따라감(데스크탑만).
+   색: 협업 중엔 내 방 색, 솔로일 땐 초록. 테두리는 배경(베이지)색이라 꽃 위에선 잎이 또렷이 분리돼 보임. */
+const SOLO_LEAF = "#548962";
 let myLeafEl = null;
 function showMyLeaf(){
   const H = 22;
   const d = `M0 0 L0 0 A${H} ${H} 0 0 1 ${H} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
   if (!myLeafEl){ myLeafEl = document.createElement("div"); myLeafEl.id = "myLeaf"; document.body.appendChild(myLeafEl); }
-  // 밝은 색 잎이 베이지 배경에 묻히지 않도록 옅은 테두리
-  myLeafEl.innerHTML = `<svg width="${H}" height="${H}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${myColor}" stroke="rgba(0,0,0,.2)" stroke-width="1"/></svg>`;
-  myLeafEl.style.display = "none";        // 첫 움직임 때 나타남
+  const col = roomConnected ? myColor : SOLO_LEAF;
+  myLeafEl.innerHTML = `<svg width="${H}" height="${H}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.5"/></svg>`;
   boardEl.style.cursor = "none";          // 보드 위에선 OS 커서 숨김
 }
 function moveMyLeaf(cx, cy){
-  if (!myLeafEl) return;
+  if (!myLeafEl) showMyLeaf();            // 첫 움직임 때 생성
   myLeafEl.style.display = "block";
   myLeafEl.style.transform = `translate(${cx}px, ${cy}px)`;
-}
-function hideMyLeaf(){
-  if (myLeafEl) myLeafEl.style.display = "none";
-  boardEl.style.cursor = "";              // OS 커서 복구
 }
 
 function updateRoomBar(){
@@ -2261,7 +2258,7 @@ async function enterRoom(id, seed){
                    : "방에 들어왔어요 — 같이 그려봐요!", 5000);
         fitContent();
       } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED"){
-        roomConnected = false; hideMyLeaf(); updateRoomBar();
+        roomConnected = false; showMyLeaf(); updateRoomBar();   // 잎을 솔로 색으로
         toast("실시간 연결이 불안정해요 — 새로고침하거나 잠시 후 다시 시도하세요", 4200);
       }
     });
@@ -2272,7 +2269,7 @@ function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); 
 function leaveRoom(){
   if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
   if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
-  roomId = null; roomConnected = false; remoteCursors.clear(); chatBubbles.clear(); hideChat(); hideMyLeaf();
+  roomId = null; roomConnected = false; remoteCursors.clear(); chatBubbles.clear(); hideChat(); showMyLeaf();   // 잎을 솔로 색(초록)으로 되돌림
   const u = new URL(location.href); u.searchParams.delete("room"); history.replaceState(null, "", u);
   allowSave = true; saveStateSoon();
   updateRoomBar(); scheduleRender();
