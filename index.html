@@ -112,6 +112,20 @@
   }
   .zoomhud:hover{background:var(--surface); filter:brightness(.98);}
 
+  /* 토스트 알림 */
+  .toast{
+    position:absolute; left:50%; bottom:72px; transform:translateX(-50%) translateY(6px);
+    z-index:8; max-width:calc(100% - 28px);
+    border-radius:10px; padding:9px 14px;
+    font-size:12.5px; font-weight:600; line-height:1.3; text-align:center;
+    background:var(--surface); border:1px solid var(--hair); box-shadow:var(--shadow);
+    opacity:0; pointer-events:none;
+    transition:opacity .18s ease, transform .18s ease;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+  @media (max-width:760px){ .toast{bottom:16px;} }
+
   /* 배치 모드 바 */
   .placebar{
     position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5;
@@ -276,6 +290,7 @@
   <div class="stage" id="stage">
     <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
     <button class="zoomhud surface" id="zoomHud" title="100%로 재설정">100%</button>
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="placebar surface" id="placebar">
       <span class="nm" id="placeName"></span>
       <button class="ibtn" id="placeRotate" title="도장 90° 회전 (R)">
@@ -361,6 +376,7 @@
       <button class="mrow" id="clearBtn">전체 지우기</button>
       <button class="mrow" id="undoBtn">실행취소<span class="kbd">Ctrl+Z</span></button>
       <hr class="divider">
+      <button class="mrow" id="shareBtn">🔗 링크 공유</button>
       <button class="mrow" id="svgBtn">SVG 저장</button>
       <button class="mrow" id="pngBtn">PNG 저장</button>
     </div>
@@ -791,7 +807,9 @@ function undo(){
 
 /* ───────────────────────── 로컬 저장 (새로고침해도 유지) ───────────────────────── */
 const STORE_KEY = "janflower:v1";
+let allowSave = true;   // 공유 링크 열람 중엔 false (방문자 기존 작업 덮어쓰기 방지)
 function saveState(){
+  if (!allowSave) return;
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify({
       cells: [...state.cells.values()],
@@ -805,25 +823,56 @@ function saveStateSoon(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(saveState, 400);   // 마지막 변경 0.4초 뒤 저장
 }
+// {cells, cam, bgOn} 형태의 패턴을 상태에 적용 (로컬·온라인 공통)
+function applyPattern(data){
+  if (!data || !Array.isArray(data.cells)) return false;
+  state.cells = new Map(
+    data.cells
+      .filter(c => c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.sh && c.col)
+      .map(c => [key(c.x, c.y), { x:c.x, y:c.y, sh:c.sh, rot:c.rot || 0, col:c.col }])
+  );
+  if (data.cam && Number.isFinite(data.cam.x) && Number.isFinite(data.cam.y) && Number.isFinite(data.cam.z)){
+    state.cam.x = data.cam.x;
+    state.cam.y = data.cam.y;
+    state.cam.z = Math.min(ZMAX, Math.max(ZMIN, data.cam.z));
+  }
+  if (typeof data.bgOn === "boolean") state.bgOn = data.bgOn;
+  return true;
+}
 function loadState(){
   try {
     const raw = localStorage.getItem(STORE_KEY);
     if (!raw) return false;
-    const data = JSON.parse(raw);
-    if (!data || !Array.isArray(data.cells)) return false;
-    state.cells = new Map(
-      data.cells
-        .filter(c => c && Number.isFinite(c.x) && Number.isFinite(c.y) && c.sh && c.col)
-        .map(c => [key(c.x, c.y), { x:c.x, y:c.y, sh:c.sh, rot:c.rot || 0, col:c.col }])
-    );
-    if (data.cam && Number.isFinite(data.cam.x) && Number.isFinite(data.cam.y) && Number.isFinite(data.cam.z)){
-      state.cam.x = data.cam.x;
-      state.cam.y = data.cam.y;
-      state.cam.z = Math.min(ZMAX, Math.max(ZMIN, data.cam.z));
-    }
-    if (typeof data.bgOn === "boolean") state.bgOn = data.bgOn;
-    return true;
+    return applyPattern(JSON.parse(raw));
   } catch (e) { return false; }
+}
+
+/* ───────────────────────── 온라인 공유 (Supabase) ───────────────────────── */
+const SB_URL = "https://ihecmsgxpfdiizlkdylv.supabase.co";
+// anon 공개키 — 프론트에 노출돼도 안전 (테이블 RLS로 보호: 추가·읽기만 허용)
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImloZWNtc2d4cGZkaWl6bGtkeWx2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc0NDQxNTUsImV4cCI6MjA5MzAyMDE1NX0.yKOehtOFcr7IRpDFsKmiRJFB63QsAxk1NU258EKfr0s";
+const SB_HEADERS = { "apikey": SB_KEY, "Authorization": "Bearer " + SB_KEY, "Content-Type": "application/json" };
+
+// 공유 링크로 받은 패턴 불러오기
+async function loadSharedPattern(id){
+  const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns?id=eq.${encodeURIComponent(id)}&select=data&limit=1`, { headers: SB_HEADERS });
+  if (!res.ok) return false;
+  const rows = await res.json();
+  if (!Array.isArray(rows) || !rows.length) return false;
+  return applyPattern(rows[0].data);
+}
+
+// 현재 패턴을 업로드하고 짧은 id 반환
+async function sharePattern(){
+  const body = { data: { cells: [...state.cells.values()], cam: state.cam, bgOn: state.bgOn } };
+  const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns`, {
+    method: "POST",
+    headers: { ...SB_HEADERS, "Prefer": "return=representation" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("share failed: " + res.status);
+  const rows = await res.json();
+  return rows[0].id;
 }
 
 /* ───────────────────────── 셀 조작 ───────────────────────── */
@@ -1507,6 +1556,33 @@ document.getElementById("pngBtn").addEventListener("click", () => {
   img.src = url;
 });
 
+/* ───────────────────────── 토스트 + 링크 공유 ───────────────────────── */
+const toastEl = document.getElementById("toast");
+let toastTimer = null;
+function toast(msg, ms = 2800){
+  if (!toastEl) return;
+  toastEl.textContent = msg;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove("show"), ms);
+}
+
+async function doShare(){
+  if (state.cells.size === 0){ toast("캔버스가 비어 있어요 🌱"); return; }
+  toast("공유 링크 만드는 중…", 8000);
+  try {
+    const id = await sharePattern();
+    const link = location.origin + location.pathname + "?p=" + id;
+    let copied = false;
+    try { await navigator.clipboard.writeText(link); copied = true; } catch (e) {}
+    if (copied) toast("🔗 링크 복사됨! 친구에게 붙여넣기 하세요", 3800);
+    else { toast("🔗 링크가 만들어졌어요", 3800); window.prompt("이 링크를 복사해서 공유하세요:", link); }
+  } catch (e) {
+    toast("공유 실패 — 인터넷 연결을 확인해 주세요", 3600);
+  }
+}
+document.getElementById("shareBtn").addEventListener("click", doShare);
+
 /* ───────────────────────── 리사이즈 대응 ───────────────────────── */
 window.addEventListener("resize", scheduleRender);
 if (typeof ResizeObserver !== "undefined"){
@@ -1524,23 +1600,20 @@ setGrid(true);                         // 격자 기본 켜짐
 setLibrary(false);                     // 시작은 패널을 닫아 깔끔한 캔버스로
 setPanel(false);
 
-// 첫 화면: 저장된 작업이 있으면 복원, 없으면(첫 방문/콜드리셋) 꽃밭을 중앙에
+// 첫 화면: 공유 링크(?p=)면 온라인에서 / 아니면 저장본 복원 / 둘 다 없으면 꽃밭
 // (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
 (function init(){
-  const restored = loadState();
-  if (!restored){
+  const sharedId = new URLSearchParams(location.search).get("p");
+  const syncBg = () => {
+    stageEl.classList.toggle("transparent", !state.bgOn);
+    bgBtn.classList.toggle("on", !state.bgOn);
+  };
+  const placeGarden = () => {
     const garden = parsedPresets.find(p => p.name === "꽃밭");
     for (const c of garden.cells) setCell(c.x - 4, c.y - 3, c);
-  }
-  // 저장된 배경 상태를 화면에 반영
-  stageEl.classList.toggle("transparent", !state.bgOn);
-  bgBtn.classList.toggle("on", !state.bgOn);
+  };
 
-  if (restored){
-    scheduleRender();            // 저장해 둔 줌·위치 그대로 보여주기
-    return;
-  }
-
+  // 첫 방문/콜드리셋: 꽃밭을 중앙에. 뷰포트 폭이 확정될 때까지(첫 터치 전) 다시 맞춘다.
   let framed = false;
   function frameGarden(){
     if (framed) return;
@@ -1559,13 +1632,43 @@ setPanel(false);
     state.cam.y = (minY + maxY + 1) / 2 * CELL - r.height / (2 * z);
     scheduleRender();
   }
-  // 사용자가 캔버스를 처음 만지는 순간부터 자동 맞춤 중단
-  boardEl.addEventListener("pointerdown", () => { framed = true; }, { once: true });
-  window.addEventListener("resize", frameGarden);
-  // 뷰포트/레이아웃이 늦게 확정되는 경우(모바일 로드·회전 등)에도 다시 맞춤
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(frameGarden).observe(stageEl);
-  requestAnimationFrame(frameGarden);
-  [0, 80, 250, 600].forEach(t => setTimeout(frameGarden, t));   // 폭이 늦게 확정될 때 대비 재시도
+  function startGarden(){
+    placeGarden();
+    syncBg();
+    boardEl.addEventListener("pointerdown", () => { framed = true; }, { once: true });
+    window.addEventListener("resize", frameGarden);
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(frameGarden).observe(stageEl);
+    requestAnimationFrame(frameGarden);
+    [0, 80, 250, 600].forEach(t => setTimeout(frameGarden, t));
+  }
+  const fitSoon = () => { fitContent(); [80, 250, 600].forEach(t => setTimeout(fitContent, t)); };
+
+  // 공유 링크: 온라인에서 불러오기 (열람 중엔 저장 잠금 → 그리기 시작하면 내 작업으로 저장)
+  if (sharedId){
+    allowSave = false;
+    boardEl.addEventListener("pointerdown", () => { allowSave = true; }, { once: true });
+    loadSharedPattern(sharedId).then(ok => {
+      if (ok){
+        syncBg(); fitSoon();
+        toast("🌸 공유된 패턴이에요 · 그리면 내 것으로 저장돼요", 3800);
+      } else {
+        toast("공유한 패턴을 찾지 못했어요");
+        allowSave = true;
+        if (loadState()){ syncBg(); scheduleRender(); } else startGarden();
+      }
+    }).catch(() => {
+      toast("불러오기 실패 — 인터넷 연결을 확인해 주세요", 3600);
+      allowSave = true;
+      if (loadState()){ syncBg(); scheduleRender(); } else startGarden();
+    });
+    return;
+  }
+
+  // 일반: 저장본 복원 / 꽃밭
+  const restored = loadState();
+  syncBg();
+  if (restored){ scheduleRender(); return; }
+  startGarden();
 })();
 </script>
 </body>
