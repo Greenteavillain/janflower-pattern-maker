@@ -2053,8 +2053,8 @@ loadDialog.addEventListener("click", (e) => { if (e.target === loadDialog) close
 /* ───────────────────────── 실시간 협업 (Supabase Realtime, SDK 지연로드) ───────────────────────── */
 let rtClient = null, rtChannel = null, roomId = null;
 let myUid = null, myName = null, myColor = null;
-let roomConnected = false, myCursorW = null;
-const remoteCursors = new Map();   // presenceKey -> {uid,name,color,x,y}
+let roomConnected = false, myCursorW = null, presentCount = 0;
+const remoteCursors = new Map();   // uid -> {uid,name,color,x,y}  (커서는 broadcast로 받음)
 const chatBubbles = new Map();     // uid -> {text,color,until}  (커서 위 말풍선)
 let cursorThrottle = 0, roomSnapTimer = null;
 const ROOM_NAMES = ["분홍","노랑","초록","튤립","데이지","민들레","코스모스","해바라기","새싹","바람개비"];
@@ -2100,26 +2100,28 @@ function applyRemoteSync(cells, bgOn){
   scheduleRender();
 }
 
-function rebuildCursors(){
-  remoteCursors.clear();
-  if (rtChannel){
-    const ps = rtChannel.presenceState();
-    for (const k in ps){
-      const m = ps[k][0];
-      if (!m || m.uid === myUid || m.x == null) continue;
-      remoteCursors.set(k, { uid:m.uid, name:m.name, color:m.color, x:m.x, y:m.y });
-    }
-  }
+function syncPresence(){           // presence = 누가 접속해 있나 (인원수 + 나간 사람 커서 정리)
+  if (!rtChannel) return;
+  const ps = rtChannel.presenceState();
+  const present = new Set();
+  for (const k in ps){ const m = ps[k][0]; if (m && m.uid && m.uid !== myUid) present.add(m.uid); }
+  presentCount = present.size;
+  for (const uid of [...remoteCursors.keys()]) if (!present.has(uid)) remoteCursors.delete(uid);
   updateRoomBar();
+  scheduleRender();
+}
+function onRemoteCursor(p){         // 커서 위치는 broadcast로 (presence 한도 회피)
+  if (!p || p.uid === myUid) return;
+  remoteCursors.set(p.uid, { uid:p.uid, name:p.name, color:p.color, x:p.x, y:p.y });
   scheduleRender();
 }
 function sendCursor(clientX, clientY){
   if (!rtChannel) return;
   myCursorW = screenToWorld(clientX, clientY);   // 내 위치(말풍선용) 항상 갱신
   const now = performance.now();
-  if (now - cursorThrottle < 45) return;
+  if (now - cursorThrottle < 60) return;          // ~16/s, broadcast (presence rate limit 회피)
   cursorThrottle = now;
-  rtChannel.track({ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) });
+  rtChannel.send({ type:"broadcast", event:"cursor", payload:{ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) } });
 }
 
 function updateRoomBar(){
@@ -2129,7 +2131,7 @@ function updateRoomBar(){
   if (!inRoom()) return;
   document.getElementById("roomName").textContent = myName || "나";
   document.getElementById("roomDot").style.background = myColor || "var(--green)";
-  document.getElementById("roomCount").textContent = roomConnected ? `${remoteCursors.size + 1}명` : "연결 중…";
+  document.getElementById("roomCount").textContent = roomConnected ? `${presentCount + 1}명` : "연결 중…";
 }
 
 function showChat(){
@@ -2191,17 +2193,18 @@ async function enterRoom(id, seed){
   if (!hadSnap){ if (!seed) state.cells.clear(); await saveRoomSnapshot(); }
   allowSave = false;   // 협업 중엔 개인 저장 잠금 (나갈 때 결과를 내 캔버스로)
 
-  rtClient = window.supabase.createClient(SB_URL, SB_KEY);
+  rtClient = window.supabase.createClient(SB_URL, SB_KEY, { realtime: { params: { eventsPerSecond: 40 } } });
   rtChannel = rtClient.channel("jf-room-" + id, { config: { broadcast: { self:false }, presence: { key: myUid } } });
   rtChannel
     .on("broadcast", { event:"paint" }, ({ payload }) => applyRemotePaint(payload.changes || []))
     .on("broadcast", { event:"sync" }, ({ payload }) => applyRemoteSync(payload.cells, payload.bgOn))
     .on("broadcast", { event:"chat" }, ({ payload }) => onChat(payload))
-    .on("presence", { event:"sync" }, rebuildCursors)
+    .on("broadcast", { event:"cursor" }, ({ payload }) => onRemoteCursor(payload))
+    .on("presence", { event:"sync" }, syncPresence)
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED"){
         roomConnected = true;
-        await rtChannel.track({ uid: myUid, name: myName, color: myColor, x: null, y: null });
+        await rtChannel.track({ uid: myUid, name: myName, color: myColor });
         showChat(); updateRoomBar();
         toast(seed ? "방을 만들었어요! '링크 복사'를 친구에게 보내면 같이 그릴 수 있어요"
                    : "방에 들어왔어요 — 같이 그려봐요!", 5000);
@@ -2235,7 +2238,7 @@ document.getElementById("roomMe").addEventListener("click", () => {
   const nn = (window.prompt("채팅·커서에 표시될 내 이름", myName || "") || "").trim().slice(0, 16);
   if (!nn) return;
   myName = nn; try { localStorage.setItem("jf_nick", nn); } catch (e){}
-  if (rtChannel) rtChannel.track({ uid: myUid, name: myName, color: myColor, x: myCursorW ? Math.round(myCursorW.x) : null, y: myCursorW ? Math.round(myCursorW.y) : null });
+  if (rtChannel) rtChannel.track({ uid: myUid, name: myName, color: myColor });
   updateRoomBar();
   toast("이름을 '" + nn + "'(으)로 바꿨어요");
 });
