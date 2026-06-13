@@ -153,8 +153,10 @@
     font-size:12.5px; font-weight:700; white-space:nowrap; max-width:calc(100% - 24px);
   }
   .roombar.visible{display:flex;}
-  .roombar .rbic{width:16px; height:16px; flex:0 0 auto;}
-  .roombar .rc{color:var(--green);}
+  .roombar .rb-me{display:flex; align-items:center; gap:5px; font-size:12.5px; font-weight:700; color:var(--ink); border-radius:6px; padding:2px 5px;}
+  .roombar .rb-me:hover{background:var(--hover);}
+  .roombar .rb-dot{width:9px; height:9px; border-radius:50%; background:var(--green); flex:0 0 auto;}
+  .roombar .rc{color:var(--ink); opacity:.5; font-weight:600;}
   @media (max-width:760px){ .roombar{top:56px;} }
 
   /* 실시간 채팅창 */
@@ -439,8 +441,8 @@
       </button>
     </div>
     <div class="roombar surface" id="roombar">
-      <svg class="rbic" viewBox="0 0 20 20" fill="none" stroke="var(--green)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.6" cy="7.8" r="2.2"/><path d="M3.9 15.4c0-2.1 1.7-3.5 3.7-3.5s3.7 1.4 3.7 3.5"/><circle cx="13.7" cy="8.3" r="1.7"/><path d="M12.7 12.1c1.8-.1 3.5 1.1 3.5 3.3"/></svg>
-      <span class="rc" id="roomCount">1명 접속</span>
+      <button class="rb-me" id="roomMe" title="내 이름 바꾸기"><span class="rb-dot" id="roomDot"></span><span id="roomName">나</span></button>
+      <span class="rc" id="roomCount">연결 중…</span>
       <button class="sbtn" id="roomCopy">링크 복사</button>
       <button class="ibtn" id="roomLeave" title="방 나가기">
         <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
@@ -1013,18 +1015,24 @@ function render(){
           stroke="${COLORS.g}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
   }
 
-  // 실시간 협업 커서 (월드 좌표, 화면 크기 일정하도록 1/z 스케일)
-  if (remoteCursors.size){
+  // 실시간 협업 커서 + 채팅 말풍선 (월드 좌표, 화면 크기 일정하도록 1/z)
+  if (remoteCursors.size || chatBubbles.size){
     const k2 = 1 / state.cam.z;
+    const nowMs = performance.now();
+    const bubble = (x, y, b) => `<g transform="translate(${x},${y})" pointer-events="none">`
+      + `<rect x="${10*k2}" y="${-33*k2}" width="${(b.text.length*12 + 18) * k2}" height="${21*k2}" rx="${7*k2}" fill="${b.color}"/>`
+      + `<text x="${19*k2}" y="${-18.5*k2}" font-size="${11*k2}" font-weight="600" fill="#fff">${escapeHtml(b.text)}</text></g>`;
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
-      const pw = (nm.length * 13 + 16) * k2;
       s += `<g transform="translate(${cu.x},${cu.y})" pointer-events="none">`
         + `<circle cx="0" cy="0" r="${5.5*k2}" fill="${cu.color}" stroke="#fff" stroke-width="${1.6*k2}"/>`
-        + `<rect x="${9*k2}" y="${-9*k2}" width="${pw}" height="${18*k2}" rx="${5*k2}" fill="${cu.color}"/>`
-        + `<text x="${16*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text>`
-        + `</g>`;
+        + `<rect x="${9*k2}" y="${-9*k2}" width="${(nm.length*13 + 16)*k2}" height="${18*k2}" rx="${5*k2}" fill="${cu.color}"/>`
+        + `<text x="${16*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text></g>`;
+      const b = chatBubbles.get(cu.uid);
+      if (b && b.until > nowMs) s += bubble(cu.x, cu.y, b);
     }
+    const mb = chatBubbles.get(myUid);   // 내 메시지는 내 커서 위에
+    if (mb && mb.until > nowMs && myCursorW) s += bubble(myCursorW.x, myCursorW.y, mb);
   }
 
   boardEl.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
@@ -2045,7 +2053,9 @@ loadDialog.addEventListener("click", (e) => { if (e.target === loadDialog) close
 /* ───────────────────────── 실시간 협업 (Supabase Realtime, SDK 지연로드) ───────────────────────── */
 let rtClient = null, rtChannel = null, roomId = null;
 let myUid = null, myName = null, myColor = null;
-const remoteCursors = new Map();   // presenceKey -> {name,color,x,y}
+let roomConnected = false, myCursorW = null;
+const remoteCursors = new Map();   // presenceKey -> {uid,name,color,x,y}
+const chatBubbles = new Map();     // uid -> {text,color,until}  (커서 위 말풍선)
 let cursorThrottle = 0, roomSnapTimer = null;
 const ROOM_NAMES = ["분홍","노랑","초록","튤립","데이지","민들레","코스모스","해바라기","새싹","바람개비"];
 const ROOM_COLORS = ["#ff92ce","#ffcc66","#548962","#7b6cf6","#ff7a59","#2bb3a3","#e0479e","#5b8def"];
@@ -2097,7 +2107,7 @@ function rebuildCursors(){
     for (const k in ps){
       const m = ps[k][0];
       if (!m || m.uid === myUid || m.x == null) continue;
-      remoteCursors.set(k, { name:m.name, color:m.color, x:m.x, y:m.y });
+      remoteCursors.set(k, { uid:m.uid, name:m.name, color:m.color, x:m.x, y:m.y });
     }
   }
   updateRoomBar();
@@ -2105,18 +2115,21 @@ function rebuildCursors(){
 }
 function sendCursor(clientX, clientY){
   if (!rtChannel) return;
+  myCursorW = screenToWorld(clientX, clientY);   // 내 위치(말풍선용) 항상 갱신
   const now = performance.now();
   if (now - cursorThrottle < 45) return;
   cursorThrottle = now;
-  const w = screenToWorld(clientX, clientY);
-  rtChannel.track({ uid: myUid, name: myName, color: myColor, x: Math.round(w.x), y: Math.round(w.y) });
+  rtChannel.track({ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) });
 }
 
 function updateRoomBar(){
   const bar = document.getElementById("roombar");
   if (!bar) return;
   bar.classList.toggle("visible", inRoom());
-  if (inRoom()) document.getElementById("roomCount").textContent = `${remoteCursors.size + 1}명 접속`;
+  if (!inRoom()) return;
+  document.getElementById("roomName").textContent = myName || "나";
+  document.getElementById("roomDot").style.background = myColor || "var(--green)";
+  document.getElementById("roomCount").textContent = roomConnected ? `${remoteCursors.size + 1}명` : "연결 중…";
 }
 
 function showChat(){
@@ -2136,12 +2149,22 @@ function appendChat(name, color, text){
   while (log.children.length > 60) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
 }
+function showChatBubble(uid, text, color){
+  chatBubbles.set(uid, { text: text.length > 24 ? text.slice(0, 24) + "…" : text, color, until: performance.now() + 4500 });
+  scheduleRender();
+  setTimeout(scheduleRender, 4700);
+}
+function onChat(p){
+  appendChat(p.name, p.color, p.text);
+  if (p.uid) showChatBubble(p.uid, p.text, p.color);
+}
 function sendChat(){
   const inp = document.getElementById("chatInput");
   const text = inp.value.trim();
   if (!text || !rtChannel) return;
-  rtChannel.send({ type:"broadcast", event:"chat", payload:{ name: myName, color: myColor, text } });
-  appendChat(myName, myColor, text);   // self:false라 내 메시지는 직접 표시
+  rtChannel.send({ type:"broadcast", event:"chat", payload:{ uid: myUid, name: myName, color: myColor, text } });
+  appendChat(myName, myColor, text);        // self:false라 내 메시지는 직접 표시
+  showChatBubble(myUid, text, myColor);     // 내 커서 위에도 말풍선
   inp.value = "";
 }
 document.getElementById("chatInput").addEventListener("keydown", (e) => {
@@ -2150,11 +2173,12 @@ document.getElementById("chatInput").addEventListener("keydown", (e) => {
 
 async function enterRoom(id, seed){
   setSelectMode(false); setPlacing(null); closeGallery();
+  roomConnected = false; chatBubbles.clear(); myCursorW = null;
   toast("같이 그리기 방 연결 중…", 9000);
   try { await loadRealtimeSDK(); } catch (e){ toast("실시간 연결 실패 — 인터넷을 확인해 주세요", 3200); return; }
   roomId = id;
   myUid = Math.random().toString(36).slice(2, 9);
-  myName = ROOM_NAMES[Math.floor(Math.random()*ROOM_NAMES.length)];
+  myName = (localStorage.getItem("jf_nick") || "").trim() || ROOM_NAMES[Math.floor(Math.random()*ROOM_NAMES.length)];
   myColor = ROOM_COLORS[Math.floor(Math.random()*ROOM_COLORS.length)];
   const u = new URL(location.href); u.searchParams.set("room", id); u.searchParams.delete("p"); history.replaceState(null, "", u);
 
@@ -2172,14 +2196,19 @@ async function enterRoom(id, seed){
   rtChannel
     .on("broadcast", { event:"paint" }, ({ payload }) => applyRemotePaint(payload.changes || []))
     .on("broadcast", { event:"sync" }, ({ payload }) => applyRemoteSync(payload.cells, payload.bgOn))
-    .on("broadcast", { event:"chat" }, ({ payload }) => appendChat(payload.name, payload.color, payload.text))
+    .on("broadcast", { event:"chat" }, ({ payload }) => onChat(payload))
     .on("presence", { event:"sync" }, rebuildCursors)
     .subscribe(async (status) => {
       if (status === "SUBSCRIBED"){
+        roomConnected = true;
         await rtChannel.track({ uid: myUid, name: myName, color: myColor, x: null, y: null });
-        showChat();
-        toast("같이 그리기 방! 위 '링크 복사'로 친구를 초대하세요", 4500);
+        showChat(); updateRoomBar();
+        toast(seed ? "방을 만들었어요! '링크 복사'를 친구에게 보내면 같이 그릴 수 있어요"
+                   : "방에 들어왔어요 — 같이 그려봐요!", 5000);
         fitContent();
+      } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED"){
+        roomConnected = false; updateRoomBar();
+        toast("실시간 연결이 불안정해요 — 새로고침하거나 잠시 후 다시 시도하세요", 4200);
       }
     });
   updateRoomBar();
@@ -2189,7 +2218,7 @@ function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); 
 function leaveRoom(){
   if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
   if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
-  roomId = null; remoteCursors.clear(); hideChat();
+  roomId = null; roomConnected = false; remoteCursors.clear(); chatBubbles.clear(); hideChat();
   const u = new URL(location.href); u.searchParams.delete("room"); history.replaceState(null, "", u);
   allowSave = true; saveStateSoon();
   updateRoomBar(); scheduleRender();
@@ -2201,6 +2230,14 @@ document.getElementById("roomLeave").addEventListener("click", leaveRoom);
 document.getElementById("roomCopy").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(location.href); toast("방 링크 복사됨! 친구에게 보내세요", 3200); }
   catch (e){ window.prompt("이 링크를 친구에게 보내세요:", location.href); }
+});
+document.getElementById("roomMe").addEventListener("click", () => {
+  const nn = (window.prompt("채팅·커서에 표시될 내 이름", myName || "") || "").trim().slice(0, 16);
+  if (!nn) return;
+  myName = nn; try { localStorage.setItem("jf_nick", nn); } catch (e){}
+  if (rtChannel) rtChannel.track({ uid: myUid, name: myName, color: myColor, x: myCursorW ? Math.round(myCursorW.x) : null, y: myCursorW ? Math.round(myCursorW.y) : null });
+  updateRoomBar();
+  toast("이름을 '" + nn + "'(으)로 바꿨어요");
 });
 
 /* ───────────────────────── 리사이즈 대응 ───────────────────────── */
