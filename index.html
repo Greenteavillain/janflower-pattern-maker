@@ -253,6 +253,19 @@
   .mbtn.ghost:hover{filter:brightness(.97);}
   .mbtn.primary{background:var(--green); color:var(--beige);}
   .mbtn.primary:hover{filter:brightness(1.06);}
+  /* 불러오기 방식 선택 옵션 */
+  .load-opt{
+    display:flex; align-items:center; gap:11px; width:100%; text-align:left;
+    padding:11px 12px; border-radius:8px; border:1px solid var(--hair); background:var(--beige);
+    transition:background .1s, border-color .1s;
+  }
+  .load-opt:hover{background:var(--hover); border-color:var(--green);}
+  .load-opt.warn:hover{border-color:#e0479e;}
+  .load-opt .lo-ic{width:20px; height:20px; flex:0 0 auto; color:var(--green);}
+  .load-opt.warn .lo-ic{color:#d6539f;}
+  .load-opt .lo-txt{display:flex; flex-direction:column; min-width:0;}
+  .load-opt .lo-txt b{font-size:13px; font-weight:700;}
+  .load-opt .lo-txt small{font-size:11px; opacity:.6; margin-top:1px;}
 
   /* 배치 모드 바 */
   .placebar{
@@ -585,6 +598,22 @@
         <button class="mbtn ghost" id="upCancel">취소</button>
         <button class="mbtn primary" id="upConfirm">올리기</button>
       </div>
+    </div>
+  </div>
+
+  <!-- 갤러리 작품 가져오기 방식 선택 -->
+  <div class="modal-overlay" id="loadDialog">
+    <div class="modal-card surface">
+      <div class="modal-title" id="loadDialogTitle">작품 가져오기</div>
+      <button class="load-opt" id="loadStampBtn">
+        <svg class="lo-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="13" height="13" rx="2"/><path d="M10 7v6M7 10h6"/></svg>
+        <span class="lo-txt"><b>도장으로 찍기</b><small>내 캔버스에 찍어요 · 지금 그림은 그대로</small></span>
+      </button>
+      <button class="load-opt warn" id="loadReplaceBtn">
+        <svg class="lo-ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a6 6 0 0 1 10-3.6l1.8 1.7"/><path d="M16 4v3.5h-3.5"/><path d="M16 11a6 6 0 0 1-10 3.6l-1.8-1.7"/><path d="M4 16v-3.5h3.5"/></svg>
+        <span class="lo-txt"><b>이 그림으로 바꾸기</b><small>지금 캔버스는 사라져요 · 실행취소로 복구</small></span>
+      </button>
+      <div class="modal-actions"><button class="mbtn ghost" id="loadCancel">취소</button></div>
     </div>
   </div>
 </main>
@@ -1445,6 +1474,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape"){
+    if (loadDialog.classList.contains("open")){ closeLoadDialog(); return; }
     if (uploadDialog.classList.contains("open")){ uploadDialog.classList.remove("open"); pendingUploadCells = null; return; }
     if (galleryOverlay.classList.contains("open")){ closeGallery(); return; }
     if (state.selectMode){ setSelectMode(false); return; }
@@ -1925,14 +1955,35 @@ function cellsThumb(cells){
 }
 
 function closeGallery(){ galleryOverlay.classList.remove("open"); }
-function loadGalleryItem(row){
-  if (!applyPattern(row.data)){ toast("불러오기 실패"); return; }
-  allowSave = false;   // 구경 중엔 저장 잠금, 그리기 시작하면 내 것으로
-  boardEl.addEventListener("pointerdown", () => { allowSave = true; }, { once: true });
+
+const loadDialog = document.getElementById("loadDialog");
+let pendingLoadRow = null;
+function openLoadDialog(row){
+  pendingLoadRow = row;
+  document.getElementById("loadDialogTitle").textContent = (row.title || "이름 없는 꽃밭") + (row.author ? ` · by ${row.author}` : "");
+  loadDialog.classList.add("open");
+}
+function closeLoadDialog(){ loadDialog.classList.remove("open"); pendingLoadRow = null; }
+// ① 도장으로: 캔버스 유지하고 배치 모드로 (예시 프리셋과 동일)
+function loadAsStamp(row){
+  const cells = (row.data && row.data.cells) || [];
+  if (!cells.length){ toast("불러올 도형이 없어요"); return; }
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const c of cells){ if (c.x<minX)minX=c.x; if (c.y<minY)minY=c.y; if (c.x>maxX)maxX=c.x; if (c.y>maxY)maxY=c.y; }
+  const norm = cells.map(c => ({ x: c.x-minX, y: c.y-minY, sh: c.sh, rot: c.rot||0, col: c.col }));
+  setPlacing({ name: row.title || "갤러리 작품", cells: norm, cols: maxX-minX+1, rows: maxY-minY+1 });
+  closeGallery();
+  toast("도장 모드 — 캔버스를 눌러 찍으세요", 3000);
+}
+// ② 바꾸기: 캔버스 대체 (실행취소로 복구 가능하도록 pushUndo)
+function replaceWithGalleryItem(row){
+  if (!row.data || !Array.isArray(row.data.cells)){ toast("불러오기 실패"); return; }
+  pushUndo();
+  applyPattern(row.data);
   closeGallery();
   syncBgDom();
   fitContent(); [80, 250].forEach(t => setTimeout(fitContent, t));
-  toast("불러왔어요 · 그리면 내 것으로 저장돼요", 3400);
+  toast("불러왔어요 (되돌리려면 실행취소 Ctrl+Z)", 3600);
 }
 async function deleteGalleryItem(row, itemEl){
   const pw = window.prompt("이 작품의 삭제 비번을 입력하세요", "");
@@ -1962,8 +2013,8 @@ async function openGallery(){
       item.className = "gallery-item"; item.setAttribute("role", "button"); item.tabIndex = 0;
       item.innerHTML = `${cellsThumb(cells)}<span class="g-title">${escapeHtml(row.title || "이름 없는 꽃밭")}</span>`
         + (row.author ? `<span class="g-author">by ${escapeHtml(row.author)}</span>` : "");
-      item.addEventListener("click", () => loadGalleryItem(row));
-      item.addEventListener("keydown", (e) => { if (e.key === "Enter") loadGalleryItem(row); });
+      item.addEventListener("click", () => openLoadDialog(row));
+      item.addEventListener("keydown", (e) => { if (e.key === "Enter") openLoadDialog(row); });
       const del = document.createElement("button");
       del.className = "g-del"; del.title = "삭제 (비번 필요)";
       del.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>`;
@@ -1986,6 +2037,10 @@ document.getElementById("upCancel").addEventListener("click", () => { uploadDial
 document.getElementById("upConfirm").addEventListener("click", confirmUpload);
 uploadDialog.addEventListener("click", (e) => { if (e.target === uploadDialog){ uploadDialog.classList.remove("open"); pendingUploadCells = null; } });
 upPw.addEventListener("keydown", (e) => { if (e.key === "Enter") confirmUpload(); });
+document.getElementById("loadStampBtn").addEventListener("click", () => { const r = pendingLoadRow; closeLoadDialog(); if (r) loadAsStamp(r); });
+document.getElementById("loadReplaceBtn").addEventListener("click", () => { const r = pendingLoadRow; closeLoadDialog(); if (r) replaceWithGalleryItem(r); });
+document.getElementById("loadCancel").addEventListener("click", closeLoadDialog);
+loadDialog.addEventListener("click", (e) => { if (e.target === loadDialog) closeLoadDialog(); });
 
 /* ───────────────────────── 실시간 협업 (Supabase Realtime, SDK 지연로드) ───────────────────────── */
 let rtClient = null, rtChannel = null, roomId = null;
