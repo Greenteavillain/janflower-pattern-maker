@@ -634,6 +634,8 @@
 const CELL = 60;                       // 월드 좌표계에서 셀 한 변
 const COLORS = { p:"#ff92ce", y:"#ffcc66", g:"#548962" };
 const CURSOR_SCALE = 0.8;   // 협업 잎 커서·이름표 전체 크기 배율 (이름도 같이 줄어듦)
+// 협업(커서·호버·키보드)은 데스크톱 전용 — 터치 기기는 막음(모바일 협업은 추후)
+const IS_TOUCH = (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) || ("ontouchstart" in window && !window.matchMedia("(pointer: fine)").matches);
 const COLOR_NAMES = { p:"jf pink", y:"jf yellow", g:"jf green" };
 const BG = "#fff8ee";
 
@@ -2289,7 +2291,10 @@ async function enterRoom(id, seed){
   updateRoomBar();
   scheduleRender();
 }
-function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); }
+function createRoom(){
+  if (IS_TOUCH){ toast("‘같이 그리기’는 지금 데스크톱에서만 돼요 (모바일은 준비 중이에요)", 3800); return; }
+  enterRoom(Math.random().toString(36).slice(2, 8), true);
+}
 function leaveRoom(){
   if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
   if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
@@ -2336,7 +2341,10 @@ setPanel(false);
 // (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
 (function init(){
   const params = new URLSearchParams(location.search);
-  if (params.get("room")){ enterRoom(params.get("room"), false); return; }   // 협업 방 링크
+  if (params.get("room")){                                                   // 협업 방 링크
+    if (IS_TOUCH){ toast("협업은 지금 데스크톱에서만 돼요 (모바일은 준비 중이에요)", 4200); }   // 모바일은 안내만 하고 일반 로드로
+    else { enterRoom(params.get("room"), false); return; }
+  }
   const sharedId = params.get("p");
   const syncBg = () => {
     stageEl.classList.toggle("transparent", !state.bgOn);
