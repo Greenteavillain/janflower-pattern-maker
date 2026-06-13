@@ -144,6 +144,17 @@
   .sbtn[hidden]{display:none;}
   @media (max-width:760px){ .selbar{top:56px;} }
 
+  /* 실시간 협업 방 바 */
+  .roombar{
+    position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:7;
+    display:none; align-items:center; gap:8px;
+    border-radius:8px; padding:4px 4px 4px 12px;
+    font-size:12.5px; font-weight:700; white-space:nowrap; max-width:calc(100% - 24px);
+  }
+  .roombar.visible{display:flex;}
+  .roombar .rc{color:var(--green);}
+  @media (max-width:760px){ .roombar{top:56px;} }
+
   /* 갤러리 오버레이 */
   .gallery-overlay{
     position:absolute; inset:0; z-index:20;
@@ -350,6 +361,13 @@
         <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
       </button>
     </div>
+    <div class="roombar surface" id="roombar">
+      <span class="rc" id="roomCount">🎮 1명 접속</span>
+      <button class="sbtn" id="roomCopy">링크 복사</button>
+      <button class="ibtn" id="roomLeave" title="방 나가기">
+        <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M5.5 5.5l9 9M14.5 5.5l-9 9"/></svg>
+      </button>
+    </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="placebar surface" id="placebar">
       <span class="nm" id="placeName"></span>
@@ -439,6 +457,7 @@
       <button class="mrow" id="shareBtn">🔗 링크 공유</button>
       <button class="mrow" id="galleryUploadBtn">🖼️ 갤러리에 올리기</button>
       <button class="mrow" id="galleryBrowseBtn">🌸 갤러리 구경</button>
+      <button class="mrow" id="roomBtn">🎮 같이 그리기 (실시간)</button>
       <button class="mrow" id="svgBtn">SVG 저장</button>
       <button class="mrow" id="pngBtn">PNG 저장</button>
     </div>
@@ -873,6 +892,20 @@ function render(){
           stroke="${COLORS.g}" stroke-width="2" stroke-dasharray="8 5" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
   }
 
+  // 실시간 협업 커서 (월드 좌표, 화면 크기 일정하도록 1/z 스케일)
+  if (remoteCursors.size){
+    const k2 = 1 / state.cam.z;
+    for (const cu of remoteCursors.values()){
+      const nm = cu.name || "";
+      const pw = (nm.length * 13 + 16) * k2;
+      s += `<g transform="translate(${cu.x},${cu.y})" pointer-events="none">`
+        + `<circle cx="0" cy="0" r="${5.5*k2}" fill="${cu.color}" stroke="#fff" stroke-width="${1.6*k2}"/>`
+        + `<rect x="${9*k2}" y="${-9*k2}" width="${pw}" height="${18*k2}" rx="${5*k2}" fill="${cu.color}"/>`
+        + `<text x="${16*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text>`
+        + `</g>`;
+    }
+  }
+
   boardEl.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
   boardEl.innerHTML = s;
   zoomHud.textContent = `${Math.round(state.cam.z * 100)}%`;
@@ -887,6 +920,7 @@ function undo(){
   const prev = state.undo.pop();
   if (prev === undefined) return;
   state.cells = new Map(JSON.parse(prev).map(c => [key(c.x, c.y), c]));
+  if (rtChannel) roomSendSync();
   scheduleRender();
 }
 
@@ -973,11 +1007,12 @@ const mirrorX = (x) => state.axis - 1 - x;   // 미러 축 기준 반대편 셀 
 
 function paintAt(x, y, initial){
   const mx = mirrorX(x);
+  const changes = [];
   const apply = (val) => {
-    setCell(x, y, val);
+    setCell(x, y, val); changes.push({ x, y, val });
     if (state.mirror && mx !== x){
-      if (!val) setCell(mx, y, null);
-      else setCell(mx, y, { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 });
+      const mval = val ? { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 } : null;
+      setCell(mx, y, mval); changes.push({ x: mx, y, val: mval });
     }
   };
 
@@ -991,6 +1026,7 @@ function paintAt(x, y, initial){
       apply({ ...state.brush, rot: rotatable(state.brush.sh) ? state.brush.rot : 0 });
     }
   }
+  if (rtChannel && changes.length) roomSendPaint(changes);   // 실시간 협업 동기화
   scheduleRender();
 }
 
@@ -1024,6 +1060,7 @@ function placeStampAt(anchor){
       });
     }
   }
+  if (rtChannel) roomSendSync();
   scheduleRender();
 }
 
@@ -1191,6 +1228,7 @@ boardEl.addEventListener("pointerdown", (e) => {
 boardEl.addEventListener("pointermove", (e) => {
   const prev = pointers.get(e.pointerId);
   if (prev) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (rtChannel) sendCursor(e.clientX, e.clientY);   // 협업 커서 위치 전송
 
   // 핀치 (두 손가락) — 간격 변화가 데드존(14px)을 넘기 전까지는 순수 이동
   if (pinch && pointers.size === 2){
@@ -1602,6 +1640,7 @@ document.getElementById("randomBtn").addEventListener("click", () => {
       }
     }
   }
+  if (rtChannel) roomSendSync();
   scheduleRender();
 });
 
@@ -1609,6 +1648,7 @@ document.getElementById("clearBtn").addEventListener("click", () => {
   if (state.cells.size === 0) return;
   pushUndo();
   state.cells.clear();
+  if (rtChannel) roomSendSync();
   scheduleRender();
 });
 
@@ -1812,6 +1852,136 @@ document.getElementById("selCancel").addEventListener("click", () => setSelectMo
 document.getElementById("galleryClose").addEventListener("click", closeGallery);
 galleryOverlay.addEventListener("click", (e) => { if (e.target === galleryOverlay) closeGallery(); });
 
+/* ───────────────────────── 실시간 협업 (Supabase Realtime, SDK 지연로드) ───────────────────────── */
+let rtClient = null, rtChannel = null, roomId = null;
+let myUid = null, myName = null, myColor = null;
+const remoteCursors = new Map();   // presenceKey -> {name,color,x,y}
+let cursorThrottle = 0, roomSnapTimer = null;
+const ROOM_NAMES = ["분홍","노랑","초록","튤립","데이지","민들레","코스모스","해바라기","새싹","바람개비"];
+const ROOM_COLORS = ["#ff92ce","#ffcc66","#548962","#7b6cf6","#ff7a59","#2bb3a3","#e0479e","#5b8def"];
+
+function inRoom(){ return !!rtChannel; }
+function loadRealtimeSDK(){
+  return new Promise((resolve, reject) => {
+    if (window.supabase && window.supabase.createClient) return resolve();
+    const sc = document.createElement("script");
+    sc.src = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2";
+    sc.onload = resolve; sc.onerror = () => reject(new Error("sdk"));
+    document.head.appendChild(sc);
+  });
+}
+
+async function saveRoomSnapshot(){
+  if (!roomId) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/janflower_rooms?on_conflict=id`, {
+      method: "POST", headers: { ...SB_HEADERS, "Prefer": "resolution=merge-duplicates" },
+      body: JSON.stringify({ id: roomId, data: { cells: [...state.cells.values()], bgOn: state.bgOn }, updated_at: new Date().toISOString() }),
+    });
+  } catch (e) {}
+}
+function saveRoomSnapshotSoon(){ if (!roomId) return; clearTimeout(roomSnapTimer); roomSnapTimer = setTimeout(saveRoomSnapshot, 1200); }
+
+function roomSendPaint(changes){
+  if (!rtChannel || !changes.length) return;
+  rtChannel.send({ type:"broadcast", event:"paint", payload:{ changes } });
+  saveRoomSnapshotSoon();
+}
+function roomSendSync(){
+  if (!rtChannel) return;
+  rtChannel.send({ type:"broadcast", event:"sync", payload:{ cells:[...state.cells.values()], bgOn: state.bgOn } });
+  saveRoomSnapshotSoon();
+}
+function applyRemotePaint(changes){ for (const ch of changes) setCell(ch.x, ch.y, ch.val); scheduleRender(); }
+function applyRemoteSync(cells, bgOn){
+  state.cells = new Map((cells||[]).filter(c=>c&&Number.isFinite(c.x)&&Number.isFinite(c.y)&&c.sh&&c.col)
+    .map(c=>[key(c.x,c.y),{x:c.x,y:c.y,sh:c.sh,rot:c.rot||0,col:c.col}]));
+  if (typeof bgOn==="boolean"){ state.bgOn=bgOn; syncBgDom(); }
+  scheduleRender();
+}
+
+function rebuildCursors(){
+  remoteCursors.clear();
+  if (rtChannel){
+    const ps = rtChannel.presenceState();
+    for (const k in ps){
+      const m = ps[k][0];
+      if (!m || m.uid === myUid || m.x == null) continue;
+      remoteCursors.set(k, { name:m.name, color:m.color, x:m.x, y:m.y });
+    }
+  }
+  updateRoomBar();
+  scheduleRender();
+}
+function sendCursor(clientX, clientY){
+  if (!rtChannel) return;
+  const now = performance.now();
+  if (now - cursorThrottle < 45) return;
+  cursorThrottle = now;
+  const w = screenToWorld(clientX, clientY);
+  rtChannel.track({ uid: myUid, name: myName, color: myColor, x: Math.round(w.x), y: Math.round(w.y) });
+}
+
+function updateRoomBar(){
+  const bar = document.getElementById("roombar");
+  if (!bar) return;
+  bar.classList.toggle("visible", inRoom());
+  if (inRoom()) document.getElementById("roomCount").textContent = `🎮 ${remoteCursors.size + 1}명 접속`;
+}
+
+async function enterRoom(id, seed){
+  setSelectMode(false); setPlacing(null); closeGallery();
+  toast("같이 그리기 방 연결 중…", 9000);
+  try { await loadRealtimeSDK(); } catch (e){ toast("실시간 연결 실패 — 인터넷을 확인해 주세요", 3200); return; }
+  roomId = id;
+  myUid = Math.random().toString(36).slice(2, 9);
+  myName = ROOM_NAMES[Math.floor(Math.random()*ROOM_NAMES.length)];
+  myColor = ROOM_COLORS[Math.floor(Math.random()*ROOM_COLORS.length)];
+  const u = new URL(location.href); u.searchParams.set("room", id); u.searchParams.delete("p"); history.replaceState(null, "", u);
+
+  let hadSnap = false;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/janflower_rooms?id=eq.${encodeURIComponent(id)}&select=data&limit=1`, { headers: SB_HEADERS });
+    const rows = res.ok ? await res.json() : [];
+    if (rows.length && rows[0].data && Array.isArray(rows[0].data.cells)){ applyPattern(rows[0].data); hadSnap = true; }
+  } catch (e) {}
+  if (!hadSnap){ if (!seed) state.cells.clear(); await saveRoomSnapshot(); }
+  allowSave = false;   // 협업 중엔 개인 저장 잠금 (나갈 때 결과를 내 캔버스로)
+
+  rtClient = window.supabase.createClient(SB_URL, SB_KEY);
+  rtChannel = rtClient.channel("jf-room-" + id, { config: { broadcast: { self:false }, presence: { key: myUid } } });
+  rtChannel
+    .on("broadcast", { event:"paint" }, ({ payload }) => applyRemotePaint(payload.changes || []))
+    .on("broadcast", { event:"sync" }, ({ payload }) => applyRemoteSync(payload.cells, payload.bgOn))
+    .on("presence", { event:"sync" }, rebuildCursors)
+    .subscribe(async (status) => {
+      if (status === "SUBSCRIBED"){
+        await rtChannel.track({ uid: myUid, name: myName, color: myColor, x: null, y: null });
+        toast("🎮 같이 그리기 방! 위 '링크 복사'로 친구를 초대하세요", 4500);
+        fitContent();
+      }
+    });
+  updateRoomBar();
+  scheduleRender();
+}
+function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); }
+function leaveRoom(){
+  if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
+  if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
+  roomId = null; remoteCursors.clear();
+  const u = new URL(location.href); u.searchParams.delete("room"); history.replaceState(null, "", u);
+  allowSave = true; saveStateSoon();
+  updateRoomBar(); scheduleRender();
+  toast("방에서 나왔어요 — 그린 건 내 캔버스에 남아요");
+}
+
+document.getElementById("roomBtn").addEventListener("click", createRoom);
+document.getElementById("roomLeave").addEventListener("click", leaveRoom);
+document.getElementById("roomCopy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(location.href); toast("🔗 방 링크 복사됨! 친구에게 보내세요", 3200); }
+  catch (e){ window.prompt("이 링크를 친구에게 보내세요:", location.href); }
+});
+
 /* ───────────────────────── 리사이즈 대응 ───────────────────────── */
 window.addEventListener("resize", scheduleRender);
 if (typeof ResizeObserver !== "undefined"){
@@ -1832,7 +2002,9 @@ setPanel(false);
 // 첫 화면: 공유 링크(?p=)면 온라인에서 / 아니면 저장본 복원 / 둘 다 없으면 꽃밭
 // (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
 (function init(){
-  const sharedId = new URLSearchParams(location.search).get("p");
+  const params = new URLSearchParams(location.search);
+  if (params.get("room")){ enterRoom(params.get("room"), false); return; }   // 협업 방 링크
+  const sharedId = params.get("p");
   const syncBg = () => {
     stageEl.classList.toggle("transparent", !state.bgOn);
     bgBtn.classList.toggle("on", !state.bgOn);
