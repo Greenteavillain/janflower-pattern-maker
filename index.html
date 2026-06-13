@@ -178,11 +178,21 @@
     padding:14px; overflow-y:auto; scrollbar-gutter:stable; flex:1 1 auto;
   }
   .gallery-item{
+    position:relative;
     border-radius:8px; padding:8px; cursor:pointer;
-    display:flex; flex-direction:column; gap:6px; align-items:center;
+    display:flex; flex-direction:column; gap:5px; align-items:center;
     border:1px solid var(--hair); background:var(--beige);
     transition:box-shadow .1s, transform .1s;
   }
+  .g-author{font-size:10px; opacity:.5; align-self:stretch; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .g-del{
+    position:absolute; top:5px; right:5px; width:22px; height:22px; border-radius:6px;
+    display:none; align-items:center; justify-content:center;
+    background:var(--surface); border:1px solid var(--hair); color:var(--ink); box-shadow:var(--shadow);
+  }
+  .g-del svg{width:12px; height:12px; display:block;}
+  .g-del:hover{color:#d6539f;}
+  .gallery-item:hover .g-del{display:flex;}
   .gallery-item:hover{box-shadow:var(--shadow); transform:translateY(-1px);}
   .gallery-item svg{width:100%; height:auto; display:block; border-radius:6px;}
   .gallery-item .g-title{
@@ -191,6 +201,33 @@
   }
   .gallery-empty{grid-column:1/-1; padding:48px 20px; text-align:center; opacity:.6; font-size:13px; line-height:1.6;}
   @media (max-width:760px){ .gallery-grid{grid-template-columns:repeat(auto-fill, minmax(104px,1fr)); gap:10px;} }
+
+  /* 모달 다이얼로그 (업로드 등) */
+  .modal-overlay{
+    position:absolute; inset:0; z-index:22;
+    display:none; align-items:center; justify-content:center;
+    background:rgba(61,75,58,.30); padding:20px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal-card{
+    width:min(330px, 100%); border-radius:12px; padding:18px;
+    display:flex; flex-direction:column; gap:11px;
+  }
+  .modal-title{font-size:14px; font-weight:700; letter-spacing:-0.01em;}
+  .fld{display:flex; flex-direction:column; gap:5px; font-size:11.5px; font-weight:600; opacity:.9;}
+  .fld em{font-style:normal; opacity:.5; font-weight:500;}
+  .fld input{
+    font-family:inherit; font-size:13px; font-weight:500; color:var(--ink);
+    padding:8px 10px; border:1px solid var(--hair); border-radius:7px;
+    background:var(--beige); outline:none; transition:border-color .1s;
+  }
+  .fld input:focus{border-color:var(--green);}
+  .modal-actions{display:flex; justify-content:flex-end; gap:8px; margin-top:4px;}
+  .mbtn{border-radius:7px; padding:7px 15px; font-size:12.5px; font-weight:700;}
+  .mbtn.ghost{background:var(--hover); color:var(--ink);}
+  .mbtn.ghost:hover{filter:brightness(.97);}
+  .mbtn.primary{background:var(--green); color:var(--beige);}
+  .mbtn.primary:hover{filter:brightness(1.06);}
 
   /* 배치 모드 바 */
   .placebar{
@@ -505,6 +542,20 @@
         </button>
       </div>
       <div class="gallery-grid" id="galleryGrid"></div>
+    </div>
+  </div>
+
+  <!-- 갤러리 업로드 다이얼로그 -->
+  <div class="modal-overlay" id="uploadDialog">
+    <div class="modal-card surface">
+      <div class="modal-title">갤러리에 올리기</div>
+      <label class="fld"><span>작품 이름</span><input id="upTitle" maxlength="40" placeholder="예: 봄날의 꽃밭" autocomplete="off"></label>
+      <label class="fld"><span>닉네임</span><input id="upAuthor" maxlength="20" placeholder="예: 티백씨" autocomplete="off"></label>
+      <label class="fld"><span>삭제 비번 <em>(선택)</em></span><input id="upPw" type="password" maxlength="30" placeholder="나중에 삭제할 때 필요해요" autocomplete="off"></label>
+      <div class="modal-actions">
+        <button class="mbtn ghost" id="upCancel">취소</button>
+        <button class="mbtn primary" id="upConfirm">올리기</button>
+      </div>
     </div>
   </div>
 </main>
@@ -1363,6 +1414,7 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "Escape"){
+    if (uploadDialog.classList.contains("open")){ uploadDialog.classList.remove("open"); pendingUploadCells = null; return; }
     if (galleryOverlay.classList.contains("open")){ closeGallery(); return; }
     if (state.selectMode){ setSelectMode(false); return; }
     if (state.placing) setPlacing(null);
@@ -1789,24 +1841,41 @@ function setSelectMode(on){
   scheduleRender();
 }
 
-async function uploadToGallery(cells, title){
+const uploadDialog = document.getElementById("uploadDialog");
+const upTitle = document.getElementById("upTitle");
+const upAuthor = document.getElementById("upAuthor");
+const upPw = document.getElementById("upPw");
+let pendingUploadCells = null;
+
+async function uploadToGallery(cells, title, author, pw){
   let minX = Infinity, minY = Infinity;
   for (const c of cells){ if (c.x < minX) minX = c.x; if (c.y < minY) minY = c.y; }
   const norm = cells.map(c => ({ x: c.x - minX, y: c.y - minY, sh: c.sh, rot: c.rot, col: c.col }));
-  const body = { data: { cells: norm, bgOn: state.bgOn }, title: title || null, gallery: true };
-  const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns`, {
-    method: "POST", headers: { ...SB_HEADERS, "Prefer": "return=representation" }, body: JSON.stringify(body),
+  const res = await fetch(`${SB_URL}/rest/v1/rpc/gallery_upload`, {
+    method: "POST", headers: SB_HEADERS,
+    body: JSON.stringify({ p_data: { cells: norm, bgOn: state.bgOn }, p_title: title || "", p_author: author || "", p_pw: pw || "" }),
   });
   if (!res.ok) throw new Error("upload failed: " + res.status);
-  return (await res.json())[0].id;
+  return await res.json();   // 새 id
 }
-async function doGalleryUpload(){
+function doGalleryUpload(){
   const cells = selCells();
   if (!cells.length){ toast("선택한 영역에 그림이 없어요"); return; }
-  const title = (window.prompt("작품 이름 (선택)", "") || "").trim().slice(0, 40);
+  pendingUploadCells = cells;
+  upTitle.value = ""; upAuthor.value = ""; upPw.value = "";
+  uploadDialog.classList.add("open");
+  setTimeout(() => upTitle.focus(), 60);
+}
+async function confirmUpload(){
+  if (!pendingUploadCells) return;
+  const title = upTitle.value.trim().slice(0, 40);
+  const author = upAuthor.value.trim().slice(0, 20);
+  const pw = upPw.value;
+  uploadDialog.classList.remove("open");
   toast("갤러리에 올리는 중…", 8000);
-  try { await uploadToGallery(cells, title); toast("갤러리에 올렸어요!", 3200); setSelectMode(false); }
+  try { await uploadToGallery(pendingUploadCells, title, author, pw); toast("갤러리에 올렸어요!", 3200); setSelectMode(false); }
   catch (e){ toast("업로드 실패 — 인터넷 연결을 확인해 주세요", 3200); }
+  pendingUploadCells = null;
 }
 
 // 셀 배열 → 썸네일 SVG
@@ -1832,12 +1901,22 @@ function loadGalleryItem(row){
   fitContent(); [80, 250].forEach(t => setTimeout(fitContent, t));
   toast("불러왔어요 · 그리면 내 것으로 저장돼요", 3400);
 }
+async function deleteGalleryItem(row, itemEl){
+  const pw = window.prompt("이 작품의 삭제 비번을 입력하세요", "");
+  if (pw === null) return;
+  try {
+    const res = await fetch(`${SB_URL}/rest/v1/rpc/gallery_delete`, { method: "POST", headers: SB_HEADERS, body: JSON.stringify({ p_id: row.id, p_pw: pw }) });
+    const ok = res.ok && (await res.json()) === true;
+    if (ok){ itemEl.remove(); toast("삭제했어요"); }
+    else toast("비번이 틀렸거나 삭제할 수 없는 작품이에요", 3200);
+  } catch (e){ toast("삭제 실패 — 인터넷을 확인해 주세요", 3200); }
+}
 async function openGallery(){
   setSelectMode(false); setPlacing(null);
   galleryOverlay.classList.add("open");
   galleryGrid.innerHTML = `<div class="gallery-empty">불러오는 중…</div>`;
   try {
-    const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns?gallery=eq.true&order=created_at.desc&limit=60&select=id,title,data`, { headers: SB_HEADERS });
+    const res = await fetch(`${SB_URL}/rest/v1/janflower_patterns?gallery=eq.true&order=created_at.desc&limit=60&select=id,title,author,data`, { headers: SB_HEADERS });
     const rows = res.ok ? await res.json() : [];
     if (!Array.isArray(rows) || !rows.length){
       galleryGrid.innerHTML = `<div class="gallery-empty">아직 올라온 작품이 없어요.<br>첫 작품을 올려보세요!</div>`;
@@ -1846,11 +1925,18 @@ async function openGallery(){
     galleryGrid.innerHTML = "";
     for (const row of rows){
       const cells = (row.data && row.data.cells) || [];
-      const btn = document.createElement("button");
-      btn.className = "gallery-item";
-      btn.innerHTML = `${cellsThumb(cells)}<span class="g-title">${escapeHtml(row.title || "이름 없는 꽃밭")}</span>`;
-      btn.addEventListener("click", () => loadGalleryItem(row));
-      galleryGrid.appendChild(btn);
+      const item = document.createElement("div");
+      item.className = "gallery-item"; item.setAttribute("role", "button"); item.tabIndex = 0;
+      item.innerHTML = `${cellsThumb(cells)}<span class="g-title">${escapeHtml(row.title || "이름 없는 꽃밭")}</span>`
+        + (row.author ? `<span class="g-author">by ${escapeHtml(row.author)}</span>` : "");
+      item.addEventListener("click", () => loadGalleryItem(row));
+      item.addEventListener("keydown", (e) => { if (e.key === "Enter") loadGalleryItem(row); });
+      const del = document.createElement("button");
+      del.className = "g-del"; del.title = "삭제 (비번 필요)";
+      del.innerHTML = `<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M6 6l8 8M14 6l-8 8"/></svg>`;
+      del.addEventListener("click", (e) => { e.stopPropagation(); deleteGalleryItem(row, item); });
+      item.appendChild(del);
+      galleryGrid.appendChild(item);
     }
   } catch (e){
     galleryGrid.innerHTML = `<div class="gallery-empty">불러오기 실패 — 인터넷 연결을 확인해 주세요</div>`;
@@ -1863,6 +1949,10 @@ selUpload.addEventListener("click", doGalleryUpload);
 document.getElementById("selCancel").addEventListener("click", () => setSelectMode(false));
 document.getElementById("galleryClose").addEventListener("click", closeGallery);
 galleryOverlay.addEventListener("click", (e) => { if (e.target === galleryOverlay) closeGallery(); });
+document.getElementById("upCancel").addEventListener("click", () => { uploadDialog.classList.remove("open"); pendingUploadCells = null; });
+document.getElementById("upConfirm").addEventListener("click", confirmUpload);
+uploadDialog.addEventListener("click", (e) => { if (e.target === uploadDialog){ uploadDialog.classList.remove("open"); pendingUploadCells = null; } });
+upPw.addEventListener("keydown", (e) => { if (e.key === "Enter") confirmUpload(); });
 
 /* ───────────────────────── 실시간 협업 (Supabase Realtime, SDK 지연로드) ───────────────────────── */
 let rtClient = null, rtChannel = null, roomId = null;
