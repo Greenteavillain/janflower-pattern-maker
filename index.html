@@ -162,29 +162,34 @@
   @media (max-width:760px){ .roombar{top:56px;} }
 
   /* 실시간 채팅창 */
+  /* 실시간 채팅 — 평소 숨김, 좌하단 호버나 엔터로 표시. 박스 없이 말풍선이 세로로 연속. */
   .chatbox{
     position:absolute; left:14px; bottom:14px; z-index:7;
-    display:none; flex-direction:column; width:236px; max-width:calc(100% - 28px);
-    border-radius:10px; overflow:hidden;
+    display:none; flex-direction:column; gap:5px; width:240px; max-width:calc(100% - 28px);
   }
   .chatbox.visible{display:flex;}
   .chat-log{
     display:flex; flex-direction:column; gap:5px;
-    padding:10px; max-height:190px; overflow-y:auto;
+    max-height:46vh; overflow-y:auto; padding-top:2px;
     scrollbar-width:thin; scrollbar-color:var(--hair) transparent;
   }
-  .chat-log::-webkit-scrollbar{width:7px;}
-  .chat-log::-webkit-scrollbar-thumb{background:var(--hair); border-radius:4px; border:2px solid transparent; background-clip:padding-box;}
-  .chat-msg{font-size:12px; line-height:1.35; word-break:break-word;}
-  .chat-msg .who{font-weight:700; margin-right:4px;}
-  .chat-empty{font-size:11.5px; opacity:.45;}
+  .chat-log::-webkit-scrollbar{width:6px;}
+  .chat-log::-webkit-scrollbar-thumb{background:var(--hair); border-radius:4px;}
+  /* 말풍선: 위 두 모서리만 사분원(반지름=높이 절반), 아래는 직각 */
+  .chat-msg{
+    align-self:flex-start; max-width:100%;
+    background:#fff; border:1.5px solid var(--hair); border-radius:14px 14px 0 0;
+    padding:5px 11px; font-size:12px; line-height:1.35; word-break:break-word;
+    box-shadow:0 1px 5px rgba(61,98,73,.10);
+  }
+  .chat-msg .who{font-weight:700; margin-right:5px;}
   .chat-input{
-    font-family:inherit; font-size:12.5px; color:var(--ink);
-    padding:8px 11px; border:none; border-top:1px solid var(--hair);
-    background:var(--beige); outline:none;
+    align-self:stretch; font-family:inherit; font-size:12.5px; color:var(--ink);
+    padding:7px 12px; border:1.5px solid var(--green); border-radius:14px 14px 0 0;
+    background:#fff; outline:none; box-shadow:0 1px 5px rgba(61,98,73,.10);
   }
   .chat-input::placeholder{color:var(--ink); opacity:.4;}
-  @media (max-width:760px){ .chatbox{width:200px; bottom:14px;} .chat-log{max-height:130px;} }
+  @media (max-width:760px){ .chatbox{width:200px;} }
 
   /* 갤러리 오버레이 */
   .gallery-overlay{
@@ -451,9 +456,9 @@
       </button>
     </div>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <div class="chatbox surface" id="chatbox">
+    <div class="chatbox" id="chatbox">
       <div class="chat-log" id="chatLog"></div>
-      <input class="chat-input" id="chatInput" placeholder="메시지 입력…" maxlength="200" autocomplete="off">
+      <input class="chat-input" id="chatInput" placeholder="메시지 입력… (Enter)" maxlength="200" autocomplete="off">
     </div>
     <div class="placebar surface" id="placebar">
       <span class="nm" id="placeName"></span>
@@ -1027,9 +1032,15 @@ function render(){
     const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
     // 배경색 밝기에 따라 글자색 선택(노랑·분홍 같은 밝은 색엔 흰 글자가 안 보임)
     const inkOn = (hex) => { const h = hex.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r + 0.587*g + 0.114*b) > 165 ? "#3d6249" : "#fff"; };
-    const bubble = (x, y, b) => `<g transform="translate(${x},${y})" pointer-events="none">`
-      + `<rect x="${10*k2}" y="${-34*k2}" width="${(textW(b.text,11) + 20) * k2}" height="${22*k2}" rx="${11*k2}" fill="#fff" stroke="${b.color}" stroke-width="${1.5*k2}"/>`
-      + `<text x="${20*k2}" y="${-19*k2}" font-size="${11*k2}" font-weight="600" fill="#3d6249">${escapeHtml(b.text)}</text></g>`;
+    // 말풍선: 위 두 모서리만 사분원(r=높이/2), 아래는 직각. 커서 위로 띄움.
+    const bubble = (x, y, b) => {
+      const h = 22, r = h / 2, pad = 11, w = textW(b.text, 11) + pad * 2;
+      const d = `M${r} 0 L${w - r} 0 A${r} ${r} 0 0 1 ${w} ${r} L${w} ${h} L0 ${h} L0 ${r} A${r} ${r} 0 0 1 ${r} 0 Z`;
+      return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(10,-34)">`
+        + `<path d="${d}" fill="#fff" stroke="${b.color}" stroke-width="1.5"/>`
+        + `<text x="${pad}" y="${r + 3.8}" font-size="11" font-weight="700" fill="#3d6249">${escapeHtml(b.text)}</text>`
+        + `</g></g>`;
+    };
     // 잎 모양 커서: 사분원 두 개(왼쪽·오른쪽 캡)가 겹친 형태. 평소엔 작은 잎,
     // 이름이 있으면 가운데에 사각형이 끼어 너비가 늘며 이름이 들어감(커서=이름표).
     // 끝점 A(0,0)=좌상단 직각 꼭짓점이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
@@ -1301,6 +1312,7 @@ function nearAxis(clientX, pointerType){
 
 boardEl.addEventListener("pointerdown", (e) => {
   e.preventDefault();
+  if (chatTyping) endChatTyping();   // 캔버스 누르면 채팅 입력 닫기
   boardEl.setPointerCapture(e.pointerId);
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
@@ -1493,6 +1505,7 @@ boardEl.addEventListener("contextmenu", (e) => {
 document.addEventListener("keydown", (e) => {
   const tg = e.target;
   if (tg && (tg.tagName === "INPUT" || tg.tagName === "TEXTAREA" || tg.isContentEditable) && e.key !== "Escape") return;
+  if (e.key === "Enter"){ if (roomConnected){ e.preventDefault(); focusChatInput(); } return; }   // 엔터 = 채팅 입력 열기(협업 중)
   if (e.code === "Space"){
     e.preventDefault();
     if (!e.repeat){ spaceDown = true; updateCursor(); }
@@ -2170,21 +2183,21 @@ function updateRoomBar(){
   document.getElementById("roomCount").textContent = roomConnected ? `${presentCount + 1}명` : "연결 중…";
 }
 
-function showChat(){
-  document.getElementById("chatbox").classList.add("visible");
-  document.getElementById("chatLog").innerHTML = `<div class="chat-empty">같이 그리는 친구와 대화해요</div>`;
-}
-function hideChat(){
-  document.getElementById("chatbox").classList.remove("visible");
-  document.getElementById("chatLog").innerHTML = "";
-}
+/* 채팅창: 평소 숨김. 좌하단 호버 또는 엔터로 표시(엔터는 입력 포커스까지).
+   채팅 기록 박스 없이 말풍선이 세로로 연속. */
+// 표시 조건 = 협업 중 && (입력 중 || 좌하단 호버). 상태에서 매번 다시 계산해 견고하게.
+let chatTyping = false, chatHover = false;
+function updateChatVis(){ document.getElementById("chatbox").classList.toggle("visible", roomConnected && (chatTyping || chatHover)); }
+function initChat(){ document.getElementById("chatLog").innerHTML = ""; chatTyping = chatHover = false; updateChatVis(); }
+function forceCloseChat(){ chatTyping = chatHover = false; document.getElementById("chatLog").innerHTML = ""; updateChatVis(); }
+function focusChatInput(){ if (!roomConnected) return; chatTyping = true; updateChatVis(); document.getElementById("chatInput").focus(); }
+function endChatTyping(){ chatTyping = false; document.getElementById("chatInput").blur(); updateChatVis(); }
 function appendChat(name, color, text){
   const log = document.getElementById("chatLog"); if (!log) return;
-  const e0 = log.querySelector(".chat-empty"); if (e0) e0.remove();
-  const d = document.createElement("div"); d.className = "chat-msg";
+  const d = document.createElement("div"); d.className = "chat-msg"; d.style.borderColor = color;
   d.innerHTML = `<span class="who" style="color:${color}">${escapeHtml(name)}</span><span>${escapeHtml(text)}</span>`;
   log.appendChild(d);
-  while (log.children.length > 60) log.removeChild(log.firstChild);
+  while (log.children.length > 40) log.removeChild(log.firstChild);
   log.scrollTop = log.scrollHeight;
 }
 function showChatBubble(uid, text, color){
@@ -2215,12 +2228,21 @@ function sendChat(){
     if (pendingSend){ pendingSend = false; sendChat(); }
   });
   ci.addEventListener("keydown", (e) => {
+    if (e.key === "Escape"){ e.stopPropagation(); endChatTyping(); return; }   // Esc로 입력 닫기
     if (e.key !== "Enter") return;
     e.preventDefault();
     if (composing || e.isComposing || e.keyCode === 229) pendingSend = true;  // 조합 끝나면 전송
     else sendChat();
   });
+  ci.addEventListener("focus", () => { chatTyping = true; updateChatVis(); });
+  ci.addEventListener("blur", () => { chatTyping = false; updateChatVis(); });
 })();
+// 좌하단 모서리에 호버하면 채팅 표시(입력 중엔 항상 표시). 협업 방에서만.
+document.addEventListener("mousemove", (e) => {
+  if (!roomConnected) return;
+  chatHover = e.clientX < 250 && e.clientY > window.innerHeight - 300;
+  updateChatVis();
+});
 
 async function enterRoom(id, seed){
   setSelectMode(false); setPlacing(null); closeGallery();
@@ -2255,7 +2277,7 @@ async function enterRoom(id, seed){
         roomConnected = true;
         await rtChannel.track({ uid: myUid, name: myName, color: myColor });
         showMyLeaf();                       // 내 커서를 잎으로 (보드 OS 커서 숨김)
-        showChat(); updateRoomBar();
+        initChat(); updateRoomBar();        // 채팅 준비(평소 숨김·호버/엔터로 표시)
         toast(seed ? "방을 만들었어요! '링크 복사'를 친구에게 보내면 같이 그릴 수 있어요"
                    : "방에 들어왔어요 — 같이 그려봐요!", 5000);
         fitContent();
@@ -2271,7 +2293,7 @@ function createRoom(){ enterRoom(Math.random().toString(36).slice(2, 8), true); 
 function leaveRoom(){
   if (rtChannel){ try { rtChannel.unsubscribe(); } catch(e){} rtChannel = null; }
   if (rtClient){ try { rtClient.removeAllChannels(); } catch(e){} rtClient = null; }
-  roomId = null; roomConnected = false; remoteCursors.clear(); chatBubbles.clear(); hideChat(); showMyLeaf();   // 잎을 솔로 색(초록)으로 되돌림
+  roomId = null; roomConnected = false; remoteCursors.clear(); chatBubbles.clear(); forceCloseChat(); showMyLeaf();   // 잎을 솔로 색(초록)으로 되돌림
   const u = new URL(location.href); u.searchParams.delete("room"); history.replaceState(null, "", u);
   allowSave = true; saveStateSoon();
   updateRoomBar(); scheduleRender();
