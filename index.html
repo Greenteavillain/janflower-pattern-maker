@@ -1035,7 +1035,7 @@ function render(){
     const H = 22;                                  // 커서 높이(화면 고정 px)
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
-      const M = nm ? textW(nm, 12) + 12 : 0;       // 가운데 사각형 너비 = 이름 폭 + 좌우 여백
+      const M = nm ? textW(nm, 12) : 0;            // 가운데 사각형 너비 = 이름 폭 (좌우 여백은 사분원 캡이 채워줌)
       const W = M + H;                             // 전체 너비
       const d = `M0 0 L${M} 0 A${H} ${H} 0 0 1 ${W} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
       s += `<g transform="translate(${cu.x},${cu.y}) scale(${k2})" pointer-events="none">`
