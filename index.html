@@ -1022,15 +1022,24 @@ function render(){
     // 글자수 기반 폭 추정: 한글/CJK는 폰트 크기만큼, 라틴/숫자는 ~0.56배
     const WIDE = /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿＀-￯]/;
     const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
+    // 배경색 밝기에 따라 글자색 선택(노랑·분홍 같은 밝은 색엔 흰 글자가 안 보임)
+    const inkOn = (hex) => { const h = hex.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r + 0.587*g + 0.114*b) > 165 ? "#3d6249" : "#fff"; };
     const bubble = (x, y, b) => `<g transform="translate(${x},${y})" pointer-events="none">`
       + `<rect x="${10*k2}" y="${-34*k2}" width="${(textW(b.text,11) + 20) * k2}" height="${22*k2}" rx="${11*k2}" fill="#fff" stroke="${b.color}" stroke-width="${1.5*k2}"/>`
       + `<text x="${20*k2}" y="${-19*k2}" font-size="${11*k2}" font-weight="600" fill="#3d6249">${escapeHtml(b.text)}</text></g>`;
+    // 잎 모양 커서: 사분원 두 개(왼쪽·오른쪽 캡)가 겹친 형태. 평소엔 작은 잎,
+    // 이름이 있으면 가운데에 사각형이 끼어 너비가 늘며 이름이 들어감(커서=이름표).
+    // 끝점 A(0,0)=좌상단 직각 꼭짓점이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
+    const H = 22;                                  // 커서 높이(화면 고정 px)
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
-      s += `<g transform="translate(${cu.x},${cu.y})" pointer-events="none">`
-        + `<circle cx="0" cy="0" r="${5.5*k2}" fill="${cu.color}" stroke="#fff" stroke-width="${1.6*k2}"/>`
-        + `<rect x="${9*k2}" y="${-9*k2}" width="${(textW(nm,11) + 18)*k2}" height="${18*k2}" rx="${9*k2}" fill="${cu.color}"/>`
-        + `<text x="${17*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text></g>`;
+      const M = nm ? textW(nm, 12) + 12 : 0;       // 가운데 사각형 너비 = 이름 폭 + 좌우 여백
+      const W = M + H;                             // 전체 너비
+      const d = `M0 0 L${M} 0 A${H} ${H} 0 0 1 ${W} ${H} L${H} ${H} A${H} ${H} 0 0 1 0 0 Z`;
+      s += `<g transform="translate(${cu.x},${cu.y}) scale(${k2})" pointer-events="none">`
+        + `<path d="${d}" fill="${cu.color}"/>`
+        + (nm ? `<text x="${W/2}" y="${H/2 + 4.2}" font-size="12" font-weight="700" fill="${inkOn(cu.color)}" text-anchor="middle">${escapeHtml(nm)}</text>` : "")
+        + `</g>`;
       const b = chatBubbles.get(cu.uid);
       if (b && b.until > nowMs) s += bubble(cu.x, cu.y, b);
     }
