@@ -1019,15 +1019,18 @@ function render(){
   if (remoteCursors.size || chatBubbles.size){
     const k2 = 1 / state.cam.z;
     const nowMs = performance.now();
+    // 글자수 기반 폭 추정: 한글/CJK는 폰트 크기만큼, 라틴/숫자는 ~0.56배
+    const WIDE = /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿＀-￯]/;
+    const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
     const bubble = (x, y, b) => `<g transform="translate(${x},${y})" pointer-events="none">`
-      + `<rect x="${10*k2}" y="${-33*k2}" width="${(b.text.length*12 + 18) * k2}" height="${21*k2}" rx="${7*k2}" fill="${b.color}"/>`
-      + `<text x="${19*k2}" y="${-18.5*k2}" font-size="${11*k2}" font-weight="600" fill="#fff">${escapeHtml(b.text)}</text></g>`;
+      + `<rect x="${10*k2}" y="${-34*k2}" width="${(textW(b.text,11) + 20) * k2}" height="${22*k2}" rx="${11*k2}" fill="#fff" stroke="${b.color}" stroke-width="${1.5*k2}"/>`
+      + `<text x="${20*k2}" y="${-19*k2}" font-size="${11*k2}" font-weight="600" fill="#3d6249">${escapeHtml(b.text)}</text></g>`;
     for (const cu of remoteCursors.values()){
       const nm = cu.name || "";
       s += `<g transform="translate(${cu.x},${cu.y})" pointer-events="none">`
         + `<circle cx="0" cy="0" r="${5.5*k2}" fill="${cu.color}" stroke="#fff" stroke-width="${1.6*k2}"/>`
-        + `<rect x="${9*k2}" y="${-9*k2}" width="${(nm.length*13 + 16)*k2}" height="${18*k2}" rx="${5*k2}" fill="${cu.color}"/>`
-        + `<text x="${16*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text></g>`;
+        + `<rect x="${9*k2}" y="${-9*k2}" width="${(textW(nm,11) + 18)*k2}" height="${18*k2}" rx="${9*k2}" fill="${cu.color}"/>`
+        + `<text x="${17*k2}" y="${3.5*k2}" font-size="${11*k2}" font-weight="700" fill="#fff">${escapeHtml(nm)}</text></g>`;
       const b = chatBubbles.get(cu.uid);
       if (b && b.until > nowMs) s += bubble(cu.x, cu.y, b);
     }
@@ -2169,9 +2172,22 @@ function sendChat(){
   showChatBubble(myUid, text, myColor);     // 내 커서 위에도 말풍선
   inp.value = "";
 }
-document.getElementById("chatInput").addEventListener("keydown", (e) => {
-  if (e.key === "Enter"){ e.preventDefault(); sendChat(); }
-});
+(function(){
+  // 한글 IME 안전: 조합 중 Enter는 전송 보류 → 조합 확정(compositionend) 후 한 번만 전송
+  const ci = document.getElementById("chatInput");
+  let composing = false, pendingSend = false;
+  ci.addEventListener("compositionstart", () => { composing = true; });
+  ci.addEventListener("compositionend", () => {
+    composing = false;
+    if (pendingSend){ pendingSend = false; sendChat(); }
+  });
+  ci.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (composing || e.isComposing || e.keyCode === 229) pendingSend = true;  // 조합 끝나면 전송
+    else sendChat();
+  });
+})();
 
 async function enterRoom(id, seed){
   setSelectMode(false); setPlacing(null); closeGallery();
