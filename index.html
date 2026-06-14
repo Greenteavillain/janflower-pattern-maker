@@ -300,7 +300,8 @@
     transition:transform .18s ease, opacity .18s ease;
   }
   .panel{right:14px; width:212px;}
-  .library{left:14px; width:240px; padding:10px;}
+  .library{left:14px; width:240px; padding:10px; z-index:8;}   /* 채팅 위로 — 겹치면 라이브러리가 채팅을 덮음 */
+  .inroom .library{max-height:calc(100% - 335px);}             /* 협업 중엔 높이 줄여 아래 채팅 7줄 공간 확보 */
   .panel.collapsed{transform:translateX(calc(100% + 22px)); opacity:0; pointer-events:none;}
   .library.collapsed{transform:translateX(calc(-100% - 22px)); opacity:0; pointer-events:none;}
   .panel::-webkit-scrollbar, .library::-webkit-scrollbar{width:11px;}
@@ -2201,6 +2202,7 @@ function updateRoomBar(){
   const bar = document.getElementById("roombar");
   if (!bar) return;
   bar.classList.toggle("visible", inRoom());
+  document.body.classList.toggle("inroom", inRoom());   // 협업 중 라이브러리 높이 줄여 채팅 공간 확보
   if (!inRoom()) return;
   document.getElementById("roomName").textContent = myName || "나";
   document.getElementById("roomDot").style.background = myColor || "var(--green)";
