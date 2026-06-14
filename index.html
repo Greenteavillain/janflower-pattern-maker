@@ -176,7 +176,7 @@
   /* 말풍선: 좌상단 + 우하단만 사분원(반지름=높이 절반), 나머지 직각 (점대칭). 보낸이 색으로 채우고 글자는 흰색 */
   .chat-msg{
     align-self:flex-start; max-width:100%;
-    background:var(--green); border-radius:14px 0 14px 0;
+    background:var(--green); border:1.5px solid #fff8ee; border-radius:14px 0 14px 0;
     padding:5px 11px; font-size:12px; line-height:1.35; word-break:break-word;
     color:#fff; box-shadow:0 1px 5px rgba(61,98,73,.14);
   }
@@ -185,7 +185,7 @@
   .chat-msg .who{font-weight:700; margin-right:5px;}
   .chat-input{
     align-self:stretch; font-family:inherit; font-size:12.5px; color:#fff;
-    padding:7px 12px; border:none; border-radius:14px 0 14px 0;
+    padding:7px 12px; border:1.5px solid #fff8ee; border-radius:14px 0 14px 0;
     background:var(--green); outline:none; box-shadow:0 1px 5px rgba(61,98,73,.14);
   }
   .chat-input::placeholder{color:#fff; opacity:.7;}
@@ -1049,7 +1049,7 @@ function render(){
       return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none">`
         + `<g transform="translate(0,${-(h + CGAP)})" opacity="${op.toFixed(2)}">`
         + `<g transform="translate(0,${h}) scale(${sc.toFixed(3)}) translate(0,${-h})">`
-        + `<path d="${bubblePath(w, h, r)}" fill="${b.color}"/>`
+        + `<path d="${bubblePath(w, h, r)}" fill="${b.color}" stroke="#fff8ee" stroke-width="1.5"/>`
         + `<text x="${pad}" y="${(h/2 + 14*0.35).toFixed(1)}" font-size="14" font-weight="500" fill="#fff">${escapeHtml(b.text)}</text>`
         + `</g></g></g>`;
     };
@@ -1066,7 +1066,7 @@ function render(){
       let dots = "";
       for (let i = 0; i < 3; i++){ const a = dotAnim(i); dots += `<circle cx="${padX + dr + i*(dr*2+gap)}" cy="${(cy0 + a.y).toFixed(2)}" r="${dr}" fill="#fff" opacity="${a.op.toFixed(2)}"/>`; }
       return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(0,${-(h + CGAP)})">`
-        + `<path d="${bubblePath(w, h, r)}" fill="${color}"/>${dots}</g></g>`;
+        + `<path d="${bubblePath(w, h, r)}" fill="${color}" stroke="#fff8ee" stroke-width="1.5"/>${dots}</g></g>`;
     };
     // 이름표(잎) 커서: 우상단+좌하단만 사분원(r=높이/2), 좌상단·우하단은 직각(말풍선의 위아래 뒤집힌 점대칭).
     // 좌상단 직각 꼭짓점(0,0)이 실제 커서 위치를 가리킴, 몸체는 우하단으로.
