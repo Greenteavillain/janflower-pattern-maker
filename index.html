@@ -1030,24 +1030,25 @@ function render(){
     const k2 = 1 / state.cam.z;
     const nowMs = performance.now();
     for (const [uid, t] of typingUsers) if (t.until <= nowMs) typingUsers.delete(uid);   // 만료된 입력중 정리
-    for (const [uid, b] of chatBubbles) if (b.until <= nowMs) chatBubbles.delete(uid);   // 만료된 말풍선 정리
+    for (const [uid, arr] of chatBubbles){ const a = arr.filter(b => b.until > nowMs); if (a.length) chatBubbles.set(uid, a); else chatBubbles.delete(uid); }   // 만료된 말풍선 정리(uid당 배열)
     // 글자수 기반 폭 추정: 한글/CJK는 폰트 크기만큼, 라틴/숫자는 ~0.56배
     const WIDE = /[ᄀ-ᇿ⺀-꓏가-힣豈-﫿＀-￯]/;
     const textW = (str, f) => { let w = 0; for (const ch of (str || "")) w += WIDE.test(ch) ? f : f * 0.56; return w; };
     // 배경색 밝기에 따라 글자색 선택(노랑·분홍 같은 밝은 색엔 흰 글자가 안 보임)
     const inkOn = (hex) => { const h = hex.replace("#",""); const r=parseInt(h.slice(0,2),16),g=parseInt(h.slice(2,4),16),b=parseInt(h.slice(4,6),16); return (0.299*r + 0.587*g + 0.114*b) > 165 ? "#3d6249" : "#fff"; };
     // 커서 장식 크기: 배율(scale) 대신 실제 px로 지정 → 글자 또렷(줌 보정 k2만 적용). 여기서 따로 조절.
-    const CH = 18, CR = CH / 2, CFONT = 10, CGAP = 6;   // 높이·모서리반지름·폰트·커서와의 간격
+    const CH = 18, CR = CH / 2, CFONT = 10, CGAP = 6, BG = 4;   // 높이·모서리반지름·폰트·커서와의 간격
     // 말풍선 경로: 좌상단+우하단만 사분원(r=h/2), 나머지 직각(점대칭)
     const bubblePath = (w, h, r) => `M${r} 0 L${w} 0 L${w} ${h - r} A${r} ${r} 0 0 1 ${w - r} ${h} L0 ${h} L0 ${r} A${r} ${r} 0 0 1 ${r} 0 Z`;
     // 채팅 말풍선: 보낸이 색 채움·흰 글자. 커서 끝과 왼쪽 정렬·살짝 위. 등장 시 좌하단에서 팝.
-    const bubble = (x, y, b) => {
+    const bubble = (x, y, b, idx) => {
       const h = 26, r = 13, pad = 12, w = textW(b.text, 14) + pad * 2;   // 말풍선 한 번 더 1.2배 (높이26·폰트14)
       const e = b.start ? Math.min(1, (nowMs - b.start) / 340) : 1;                       // 0..1 등장 진행
       const sc = e < 0.62 ? (0.55 + 0.82 * e) : (1.06 - 0.06 * ((e - 0.62) / 0.38));      // .55→1.06→1 (살짝 오버슈트)
       const op = Math.min(1, e * 2.2);
+      const offY = -(CGAP + h + idx * (h + BG));
       return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none">`
-        + `<g transform="translate(0,${-(h + CGAP)})" opacity="${op.toFixed(2)}">`
+        + `<g transform="translate(0,${offY})" opacity="${op.toFixed(2)}">`
         + `<g transform="translate(0,${h}) scale(${sc.toFixed(3)}) translate(0,${-h})">`
         + `<path d="${bubblePath(w, h, r)}" fill="${b.color}" stroke="#fff8ee" stroke-width="1.3"/>`
         + `<text x="${pad}" y="${(h/2 + 14*0.35).toFixed(1)}" font-size="14" font-weight="500" fill="#fff">${escapeHtml(b.text)}</text>`
@@ -1061,11 +1062,12 @@ function render(){
       if (f < 0.8){ const t = (f-0.4)/0.4; return { y: -3*(1-t), op: 1 - 0.75*t }; }
       return { y: 0, op: 0.25 };
     };
-    const typingBubble = (x, y, color) => {
+    const typingBubble = (x, y, color, idx) => {
       const h = 26, r = 13, dr = 3.5, gap = 6, padX = 13, w = padX*2 + dr*2*3 + gap*2, cy0 = h/2 + 2;
+      const offY = -(CGAP + h + (idx || 0) * (h + BG));
       let dots = "";
       for (let i = 0; i < 3; i++){ const a = dotAnim(i); dots += `<circle cx="${padX + dr + i*(dr*2+gap)}" cy="${(cy0 + a.y).toFixed(2)}" r="${dr}" fill="#fff" opacity="${a.op.toFixed(2)}"/>`; }
-      return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(0,${-(h + CGAP)})">`
+      return `<g transform="translate(${x},${y}) scale(${k2})" pointer-events="none"><g transform="translate(0,${offY})">`
         + `<path d="${bubblePath(w, h, r)}" fill="${color}" stroke="#fff8ee" stroke-width="1.3"/>${dots}</g></g>`;
     };
     // 이름표(잎) 커서: 우상단+좌하단만 사분원(r=높이/2), 좌상단·우하단은 직각(말풍선의 위아래 뒤집힌 점대칭).
@@ -1078,12 +1080,13 @@ function render(){
         + `<path d="${d}" fill="${cu.color}" stroke="#fff8ee" stroke-width="1.3"/>`
         + (nm ? `<text x="${W/2}" y="${(CH/2 + CFONT*0.35).toFixed(1)}" font-size="${CFONT}" font-weight="700" fill="${inkOn(cu.color)}" text-anchor="middle">${escapeHtml(nm)}</text>` : "")
         + `</g>`;
-      const ty = typingUsers.get(cu.uid), b = chatBubbles.get(cu.uid);
-      if (ty && ty.until > nowMs) s += typingBubble(cu.x, cu.y, ty.color || cu.color);   // 입력중이면 점점점
-      else if (b && b.until > nowMs) s += bubble(cu.x, cu.y, b);                          // 아니면 메시지
+      const ty = typingUsers.get(cu.uid), arr = chatBubbles.get(cu.uid);
+      let base = 0;
+      if (ty && ty.until > nowMs){ s += typingBubble(cu.x, cu.y, ty.color || cu.color, 0); base = 1; }   // 입력중이면 점점점이 맨 아래
+      if (arr) for (let i = 0; i < arr.length; i++) s += bubble(cu.x, cu.y, arr[i], base + (arr.length - 1 - i));   // 최신=커서 가까이, 오래된 건 위로
     }
-    const mb = chatBubbles.get(myUid);   // 내 메시지는 내 커서 위에
-    if (mb && mb.until > nowMs && myCursorW) s += bubble(myCursorW.x, myCursorW.y, mb);
+    const myArr = chatBubbles.get(myUid);   // 내 메시지도 내 커서 위에 쌓임
+    if (myArr && myCursorW) for (let i = 0; i < myArr.length; i++) s += bubble(myCursorW.x, myCursorW.y, myArr[i], myArr.length - 1 - i);
   }
 
   boardEl.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
@@ -2109,7 +2112,7 @@ let rtClient = null, rtChannel = null, roomId = null;
 let myUid = null, myName = null, myColor = null;
 let roomConnected = false, myCursorW = null, presentCount = 0;
 const remoteCursors = new Map();   // uid -> {uid,name,color,x,y}  (커서는 broadcast로 받음)
-const chatBubbles = new Map();     // uid -> {text,color,start,until}  (커서 위 말풍선)
+const chatBubbles = new Map();     // uid -> bubble[] {text,color,start,until}  (커서 위 말풍선, 쿨타임 안 끝난 건 위로 쌓임)
 const typingUsers = new Map();     // uid -> {color,until}  (입력중 점점점 표시)
 let fxRAF = null;                  // 말풍선 팝·입력중 점 애니메이션용 rAF 루프
 let cursorThrottle = 0, roomSnapTimer = null;
@@ -2176,7 +2179,7 @@ function sendCursor(clientX, clientY){
   myCursorW = screenToWorld(clientX, clientY);   // 내 위치(말풍선용) 항상 갱신
   const now = performance.now();
   const mb = chatBubbles.get(myUid);
-  if (mb && mb.until > now) scheduleRender();      // 내 말풍선이 내 커서를 따라오게 재렌더
+  if (mb && mb.some(b => b.until > now)) scheduleRender();      // 내 말풍선이 내 커서를 따라오게 재렌더
   if (now - cursorThrottle < 60) return;          // ~16/s, broadcast (presence rate limit 회피)
   cursorThrottle = now;
   rtChannel.send({ type:"broadcast", event:"cursor", payload:{ uid: myUid, name: myName, color: myColor, x: Math.round(myCursorW.x), y: Math.round(myCursorW.y) } });
@@ -2243,7 +2246,7 @@ function appendChat(name, color, text){
 function fxActive(){
   const now = performance.now();
   for (const t of typingUsers.values()) if (t.until > now) return true;
-  for (const b of chatBubbles.values()) if (b.until > now && now - b.start < 380) return true;
+  for (const arr of chatBubbles.values()) for (const b of arr) if (b.until > now && now - b.start < 380) return true;
   return false;
 }
 function startFx(){ if (fxRAF) return; const tick = () => { render(); fxRAF = fxActive() ? requestAnimationFrame(tick) : null; }; fxRAF = requestAnimationFrame(tick); }
@@ -2263,7 +2266,11 @@ function pingTyping(){
 }
 function stopTyping(){ clearTimeout(typingStopTimer); if (!typingSentAt) return; typingSentAt = 0; if (rtChannel) rtChannel.send({ type:"broadcast", event:"typing", payload:{ uid: myUid, on:false } }); }
 function showChatBubble(uid, text, color){
-  chatBubbles.set(uid, { text: text.length > 24 ? text.slice(0, 24) + "…" : text, color, start: performance.now(), until: performance.now() + 4500 });
+  const b = { text: text.length > 24 ? text.slice(0, 24) + "…" : text, color, start: performance.now(), until: performance.now() + 4500 };
+  const arr = chatBubbles.get(uid) || [];
+  arr.push(b);                     // 새 말풍선을 스택에 추가(최신이 커서에 가장 가까움)
+  while (arr.length > 5) arr.shift();   // 최대 5개, 넘으면 오래된 것부터 사라짐
+  chatBubbles.set(uid, arr);
   startFx();                       // 등장 팝 애니메이션 루프 시작
   scheduleRender();
   setTimeout(scheduleRender, 4700);
