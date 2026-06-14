@@ -57,8 +57,6 @@
   .stage.panmode #board{cursor:grab;}
   .stage.axishover #board{cursor:ew-resize;}
   .stage.panning #board{cursor:grabbing;}
-  /* 내 커서(잎) 오버레이 — 협업 방에서만, OS 커서 대신 마우스를 따라감 */
-  #myLeaf{position:fixed; left:0; top:0; pointer-events:none; z-index:9; display:none; will-change:transform;}
 
   /* ───────── 공통 컨트롤 ───────── */
   button{
@@ -1408,12 +1406,10 @@ boardEl.addEventListener("pointerdown", (e) => {
   paintAt(x, y, true);
 });
 
-boardEl.addEventListener("pointerleave", () => { if (myLeafEl) myLeafEl.style.display = "none"; });  // 보드 벗어나면 내 잎 숨김(패널 위에선 OS 커서)
 boardEl.addEventListener("pointermove", (e) => {
   const prev = pointers.get(e.pointerId);
   if (prev) pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
   if (rtChannel) sendCursor(e.clientX, e.clientY);   // 협업 커서 위치 전송
-  if (e.pointerType !== "touch") moveMyLeaf(e.clientX, e.clientY);  // 내 잎 커서(솔로·협업 모두)가 마우스를 따라감
 
   // 핀치 (두 손가락) — 간격 변화가 데드존(14px)을 넘기 전까지는 순수 이동
   if (pinch && pointers.size === 2){
@@ -2189,19 +2185,27 @@ function sendCursor(clientX, clientY){
 /* 내 커서(잎) — 솔로·협업 모두 보드 위 OS 커서를 숨기고 작은 잎이 마우스를 따라감(데스크탑만).
    색: 협업 중엔 내 방 색, 솔로일 땐 선택한 팔레트 색(기본 초록). 테두리는 배경(베이지)색이라 꽃 위에선 잎이 또렷이 분리돼 보임. */
 const SOLO_LEAF = "#548962";   // 팔레트 색을 못 읽을 때의 기본값
-let myLeafEl = null;
+let myLeafColor = "";
+// 내 커서(잎)를 PNG로 구워 실제 CSS 커서로 지정 → OS가 그려서 픽셀스냅·떨림 없음·테두리 깔끔.
+// 색: 협업 중엔 방 색, 솔로일 땐 선택 팔레트 색(기본 초록). 테두리=배경(베이지)색.
 function showMyLeaf(){
-  const H = 18, LR = H / 2;   // 실제 크기로(배율X) → 또렷. 우상단+좌하단 사분원, 좌상단(끝)·우하단 직각
-  const d = `M0 0 L${H - LR} 0 A${LR} ${LR} 0 0 1 ${H} ${LR} L${H} ${H} L${LR} ${H} A${LR} ${LR} 0 0 1 0 ${H - LR} Z`;
-  if (!myLeafEl){ myLeafEl = document.createElement("div"); myLeafEl.id = "myLeaf"; document.body.appendChild(myLeafEl); }
-  const col = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);   // 솔로: 선택한 팔레트 색
-  myLeafEl.innerHTML = `<svg width="${H}" height="${H}" viewBox="0 0 ${H} ${H}" xmlns="http://www.w3.org/2000/svg"><path d="${d}" fill="${col}" stroke="#fff8ee" stroke-width="1.3"/></svg>`;
-  boardEl.style.cursor = "none";          // 보드 위에선 OS 커서 숨김
-}
-function moveMyLeaf(cx, cy){
-  if (!myLeafEl) showMyLeaf();            // 첫 움직임 때 생성
-  myLeafEl.style.display = "block";
-  myLeafEl.style.transform = `translate(${cx}px, ${cy}px)`;
+  if (typeof document === "undefined" || !boardEl) return;
+  const color = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);
+  if (color === myLeafColor) return;     // 색 안 바뀌면 재생성 안 함
+  myLeafColor = color;
+  const S = 18, pad = 2, total = S + pad * 2, LR = S / 2, scale = 2;   // 잎 18px + 테두리 여백, 2x로 또렷
+  const cv = document.createElement("canvas");
+  cv.width = total * scale; cv.height = total * scale;
+  const ctx = cv.getContext("2d");
+  ctx.scale(scale, scale); ctx.translate(pad, pad);
+  const path = new Path2D(`M0 0 L${S - LR} 0 A${LR} ${LR} 0 0 1 ${S} ${LR} L${S} ${S} L${LR} ${S} A${LR} ${LR} 0 0 1 0 ${S - LR} Z`);
+  ctx.fillStyle = color; ctx.fill(path);
+  ctx.lineWidth = 1.3; ctx.lineJoin = "round"; ctx.strokeStyle = "#fff8ee"; ctx.stroke(path);
+  const url = cv.toDataURL("image/png");
+  const set = (v) => { boardEl.style.cursor = ""; boardEl.style.cursor = v; return !!boardEl.style.cursor; };
+  set(`image-set(url("${url}") ${scale}x) ${pad} ${pad}, auto`)
+    || set(`-webkit-image-set(url("${url}") ${scale}x) ${pad} ${pad}, auto`)
+    || set(`url("${url}") ${pad} ${pad}, auto`);
 }
 
 function updateRoomBar(){
@@ -2401,6 +2405,7 @@ setPanel(false);
 // (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
 (function init(){
   const params = new URLSearchParams(location.search);
+  if (!IS_TOUCH) showMyLeaf();   // 로드 시 솔로 잎 커서 적용(협업 입장하면 방 색으로 갱신)
   if (params.get("room")){                                                   // 협업 방 링크
     if (IS_TOUCH){ toast("협업은 지금 데스크톱에서만 돼요 (모바일은 준비 중이에요)", 4200); }   // 모바일은 안내만 하고 일반 로드로
     else { enterRoom(params.get("room"), false); return; }
