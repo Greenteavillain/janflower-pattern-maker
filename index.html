@@ -1404,6 +1404,7 @@ boardEl.addEventListener("pointerdown", (e) => {
 
   // 칠하기 시작
   painting = true;
+  setLeafPressed(true);                 // 누르는 동안 잎 커서 살짝 작아짐(클릭 피드백)
   pushUndo();
   const { x, y } = cellFromEvent(e);
   lastCell = key(x, y);
@@ -1506,6 +1507,7 @@ boardEl.addEventListener("pointermove", (e) => {
     if (panPointer === e.pointerId) panPointer = null;
     if (pointers.size < 2) pinch = null;
     if (pointers.size === 0){ painting = false; lastCell = null; }
+    setLeafPressed(false);
     updateCursor();
   })
 );
@@ -2192,25 +2194,39 @@ const SOLO_LEAF = "#548962";   // 팔레트 색을 못 읽을 때의 기본값
 let myLeafColor = "";
 // 내 커서(잎)를 PNG로 구워 실제 CSS 커서로 지정 → OS가 그려서 픽셀스냅·떨림 없음·테두리 깔끔.
 // 색: 협업 중엔 방 색, 솔로일 땐 선택 팔레트 색(기본 초록). 테두리=배경(베이지)색.
+let leafPressed = false, leafNormalUrl = "", leafPressedUrl = "";
+// 잎 커서를 PNG(2x)로 구움. k<1이면 팁(0,0) 기준으로 살짝 축소(누름 효과). 데모/실제 공용.
+function leafCursorURL(color, k){
+  const S = 18, pad = 2, total = S + pad * 2, LR = S / 2, scale = 2;
+  const cv = document.createElement("canvas");
+  cv.width = total * scale; cv.height = total * scale;
+  const ctx = cv.getContext("2d");
+  ctx.scale(scale, scale); ctx.translate(pad, pad);
+  if (k && k !== 1) ctx.scale(k, k);
+  const path = new Path2D(`M0 0 L${S - LR} 0 A${LR} ${LR} 0 0 1 ${S} ${LR} L${S} ${S} L${LR} ${S} A${LR} ${LR} 0 0 1 0 ${S - LR} Z`);
+  ctx.fillStyle = color; ctx.fill(path);
+  ctx.lineWidth = 1.3; ctx.lineJoin = "round"; ctx.strokeStyle = "#fff8ee"; ctx.stroke(path);
+  return cv.toDataURL("image/png");
+}
+function applyLeafCursor(){
+  const url = leafPressed ? leafPressedUrl : leafNormalUrl;
+  if (!url || !boardEl) return;
+  const set = (v) => { boardEl.style.cursor = ""; boardEl.style.cursor = v; return !!boardEl.style.cursor; };
+  set(`image-set(url("${url}") 2x) 2 2, auto`)
+    || set(`-webkit-image-set(url("${url}") 2x) 2 2, auto`)
+    || set(`url("${url}") 2 2, auto`);
+}
+// 내 커서(잎): 협업=방색 / 솔로=선택 팔레트색(기본 초록). 누르면 살짝 작아짐(클릭 피드백).
 function showMyLeaf(){
   if (typeof document === "undefined" || !boardEl) return;
   const color = roomConnected ? myColor : (COLORS[state.brush.col] || SOLO_LEAF);
   if (color === myLeafColor) return;     // 색 안 바뀌면 재생성 안 함
   myLeafColor = color;
-  const S = 18, pad = 2, total = S + pad * 2, LR = S / 2, scale = 2;   // 잎 18px + 테두리 여백, 2x로 또렷
-  const cv = document.createElement("canvas");
-  cv.width = total * scale; cv.height = total * scale;
-  const ctx = cv.getContext("2d");
-  ctx.scale(scale, scale); ctx.translate(pad, pad);
-  const path = new Path2D(`M0 0 L${S - LR} 0 A${LR} ${LR} 0 0 1 ${S} ${LR} L${S} ${S} L${LR} ${S} A${LR} ${LR} 0 0 1 0 ${S - LR} Z`);
-  ctx.fillStyle = color; ctx.fill(path);
-  ctx.lineWidth = 1.3; ctx.lineJoin = "round"; ctx.strokeStyle = "#fff8ee"; ctx.stroke(path);
-  const url = cv.toDataURL("image/png");
-  const set = (v) => { boardEl.style.cursor = ""; boardEl.style.cursor = v; return !!boardEl.style.cursor; };
-  set(`image-set(url("${url}") ${scale}x) ${pad} ${pad}, auto`)
-    || set(`-webkit-image-set(url("${url}") ${scale}x) ${pad} ${pad}, auto`)
-    || set(`url("${url}") ${pad} ${pad}, auto`);
+  leafNormalUrl = leafCursorURL(color, 1);
+  leafPressedUrl = leafCursorURL(color, 0.8);
+  applyLeafCursor();
 }
+function setLeafPressed(on){ if (leafPressed === on) return; leafPressed = on; applyLeafCursor(); }
 
 function updateRoomBar(){
   const bar = document.getElementById("roombar");
@@ -2419,71 +2435,79 @@ function runDemo(){
   css.textContent =
     ".demomode #libFab,.demomode #gridFab,.demomode #fab,.demomode #zoomHud,.demomode #mtop,.demomode #mtoolbar,.demomode #roombar,.demomode #placebar{display:none!important;}"
     + ".demomode #board{cursor:none!important;}"
-    + "#demoCursor{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;transition:transform .52s cubic-bezier(.45,0,.25,1);will-change:transform;}"
-    + "#demoCursor .dc-in{transition:transform .12s ease;transform-origin:1px 1px;}"
-    + "#demoCursor.clk .dc-in{transform:scale(.8);}";
+    + "#demoCursor{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;transition:transform .5s cubic-bezier(.45,0,.25,1);will-change:transform;}"
+    + "#demoCursor.fast{transition:transform .19s cubic-bezier(.4,0,.2,1);}"
+    + "#demoCursor .dc-in{transition:transform .12s ease;transform-origin:2px 2px;display:block;}"
+    + "#demoCursor.clk .dc-in,#demoCursor.down .dc-in{transform:scale(.8);}";
   document.head.appendChild(css);
 
-  // 우리 앱의 잎 커서 모양(showMyLeaf와 동일: 우상·좌하 둥근 잎, 팁=좌상). 선택한 색으로 칠함.
-  function leafSVG(color){
-    return "<div class='dc-in'><svg width='20' height='20' viewBox='-1 -1 21 21'>"
-      + "<path d='M0 0 L9 0 A9 9 0 0 1 18 9 L18 18 L9 18 A9 9 0 0 1 0 9 Z' fill='" + color + "' stroke='#fff8ee' stroke-width='1.3'/></svg></div>";
-  }
+  // 데모 커서도 실제 앱과 동일한 PNG 잎(leafCursorURL 공용). 선택 색으로 다시 구움. 누르면 .clk/.down 으로 축소.
   const cur = document.createElement("div");
   cur.id = "demoCursor";
-  cur.innerHTML = leafSVG(COLORS.g);
+  function setLeaf(c){ cur.innerHTML = "<img class='dc-in' src='" + leafCursorURL(c, 1) + "' width='22' height='22'>"; }
+  setLeaf(COLORS.g);
   document.body.appendChild(cur);
-  function recolor(c){ cur.innerHTML = leafSVG(c); }
+  function recolor(c){ setLeaf(c); }
 
   const sleep = ms => new Promise(r => setTimeout(r, ms));
-  const MOVE = 540, DOCK_PAUSE = 420, PLACE_PAUSE = 340;
-  cur.style.transform = `translate(${innerWidth/2}px,${innerHeight/2}px)`;
-  async function glide(x, y){ cur.style.transform = `translate(${x}px,${y}px)`; await sleep(MOVE); }
-  function tap(){ cur.classList.add("clk"); setTimeout(() => cur.classList.remove("clk"), 140); }
+  const MOVE = 500, DOCK_PAUSE = 360, PLACE_PAUSE = 300, ROT_PAUSE = 240, DRAG_MOVE = 200, DRAG_PAUSE = 70;
+  cur.style.transform = `translate(${innerWidth/2 - 2}px,${innerHeight/2 - 2}px)`;
+  async function glide(x, y){ cur.style.transform = `translate(${x-2}px,${y-2}px)`; await sleep(MOVE); }
+  async function glideFast(x, y){ cur.style.transform = `translate(${x-2}px,${y-2}px)`; await sleep(DRAG_MOVE); }
+  function tap(){ cur.classList.add("clk"); setTimeout(() => cur.classList.remove("clk"), 130); }
+  function cellXY(x, y){ const r = boardEl.getBoundingClientRect(), z = state.cam.z; return [(x*CELL + CELL/2 - state.cam.x)*z + r.left, (y*CELL + CELL/2 - state.cam.y)*z + r.top]; }
 
   // ── 실제 앱을 조작 ── (직접 setCell 금지: 진짜 버튼 클릭 + 진짜 paintAt 만 사용 → 메커니즘 100% 일치)
   const SHAPE_IDX = { S:0, C:1, Q:2, I:3, E:4 }, COL_IDX = { p:0, y:1, g:2 };
   const shapeBtn = sh => document.querySelectorAll("#dShapes .shape-btn")[SHAPE_IDX[sh]];
   const colorBtn = c => document.querySelectorAll("#dColors .swatch")[COL_IDX[c]];
   async function tapBtn(b){ if (!b) return; const r = b.getBoundingClientRect(); await glide(r.left + r.width/2, r.top + r.height/2); tap(); b.click(); }
-  async function pickColor(c){ await tapBtn(colorBtn(c)); recolor(COLORS[c]); await sleep(DOCK_PAUSE); }      // 진짜 색 버튼 클릭
-  async function useShape(sh){ if (state.brush.sh !== sh || state.tool !== "paint"){ await tapBtn(shapeBtn(sh)); await sleep(DOCK_PAUSE); } }
-  async function rotateTo(rot){ let g = 0; while (state.brush.rot !== rot && g++ < 4){ await tapBtn(shapeBtn(state.brush.sh)); await sleep(DOCK_PAUSE); } }   // 도형 버튼 재클릭=회전(앱 실제 동작)
-  async function paintCell(x, y){
-    const r = boardEl.getBoundingClientRect(), z = state.cam.z;
-    await glide((x*CELL + CELL/2 - state.cam.x)*z + r.left, (y*CELL + CELL/2 - state.cam.y)*z + r.top);
-    tap(); paintAt(x, y, true);                                                                      // 진짜 칠하기 경로
-    await sleep(PLACE_PAUSE);
+  async function pickColor(c){ await tapBtn(colorBtn(c)); recolor(COLORS[c]); await sleep(DOCK_PAUSE); }      // 색은 하단독에서
+  async function useShape(sh){ if (state.brush.sh !== sh || state.tool !== "paint"){ await tapBtn(shapeBtn(sh)); await sleep(DOCK_PAUSE); } }   // 도형은 하단독에서
+  // 브러시 rot은 0 고정. 빈 칸에 놓고(rot0) → 설치된 타일을 한 번 더 눌러 in-place 회전(앱 실제 동작, 독 왕복 없음)
+  async function placeAt(x, y){ const [sx, sy] = cellXY(x, y); await glide(sx, sy); tap(); paintAt(x, y, true); await sleep(PLACE_PAUSE); }
+  async function rotateCell(x, y){ tap(); paintAt(x, y, true); await sleep(ROT_PAUSE); }
+  async function placeRot(x, y, rot){ await placeAt(x, y); for (let i = 0; i < rot; i++) await rotateCell(x, y); }
+  // 원이 많은 동글이꽃은 드래그로 죽 그림 (paintAt initial=false = 드래그 칠하기 경로, 커서는 누른 채 빠르게 이동)
+  async function dragPaint(cells){
+    cur.classList.add("down", "fast");
+    for (const [x, y] of cells){ const [sx, sy] = cellXY(x, y); await glideFast(sx, sy); paintAt(x, y, false); await sleep(DRAG_PAUSE); }
+    cur.classList.remove("down", "fast"); await sleep(PLACE_PAUSE);
   }
-  function centerCam(z){ const r = boardEl.getBoundingClientRect(); state.cam.z = z; state.cam.x = 60 - r.width/(2*z); state.cam.y = 120 - r.height/(2*z); }
+  function centerCam(z){ const r = boardEl.getBoundingClientRect(); state.cam.z = z; state.cam.x = 180 - r.width/(2*z); state.cam.y = 180 - r.height/(2*z); }
   function tweenCam(tz, dur){
     const r = boardEl.getBoundingClientRect();
     const sz = state.cam.z, sx0 = state.cam.x, sy0 = state.cam.y;
-    const tx = 60 - r.width/(2*tz), ty = 120 - r.height/(2*tz), t0 = performance.now();
+    const tx = 180 - r.width/(2*tz), ty = 180 - r.height/(2*tz), t0 = performance.now();
     return new Promise(res => { function f(now){ const p = Math.min(1, (now-t0)/dur), e = p<.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
       state.cam.z = sz+(tz-sz)*e; state.cam.x = sx0+(tx-sx0)*e; state.cam.y = sy0+(ty-sy0)*e; scheduleRender();
       if (p<1) requestAnimationFrame(f); else res(); } requestAnimationFrame(f); });
   }
 
-  // 튤립 한 송이를 '진짜 하단독 조작'으로. 색/도형=진짜 버튼 클릭, 회전=도형 버튼 재클릭(여러 번), 칠하기=진짜 paintAt.
-  // 튤립 토큰: (0,0)Q3 (1,0)Q2 / (0,1)Q3 (1,1)Q2 / (0,2)Q1 (1,2)Q0 [분홍] / (0,3)Q1 (1,3)Q0 [초록]
+  // 튤립: Q를 놓고 설치된 타일을 눌러 회전. 토큰 (1,2)0 (0,2)1 (1,0)2 (1,1)2 (0,0)3 (0,1)3 [분홍] / (1,3)0 (0,3)1 [초록]
   async function tulip(){
     await pickColor("p"); await useShape("Q");
-    await rotateTo(0); await paintCell(1,2);
-    await rotateTo(1); await paintCell(0,2);
-    await rotateTo(2); await paintCell(1,0); await paintCell(1,1);
-    await rotateTo(3); await paintCell(0,0); await paintCell(0,1);
+    await placeRot(1,2,0); await placeRot(0,2,1);
+    await placeRot(1,0,2); await placeRot(1,1,2);
+    await placeRot(0,0,3); await placeRot(0,1,3);
     await pickColor("g");
-    await rotateTo(0); await paintCell(1,3);
-    await rotateTo(1); await paintCell(0,3);
+    await placeRot(1,3,0); await placeRot(0,3,1);
+  }
+  // 동글이꽃(튤립 오른쪽): 노랑 원=드래그, 초록 베이스 Q=타일 눌러 회전. 원 (5,0)(4,1)(4,2)(4,3)(4,4)(5,4)(5,3), 베이스 (4,5)Q3 (5,5)Q2
+  async function roundFlower(){
+    await pickColor("y"); await useShape("C");
+    await dragPaint([[5,0],[4,1],[4,2],[4,3],[4,4],[5,4],[5,3]]);
+    await pickColor("g"); await useShape("Q");
+    await placeRot(4,5,3); await placeRot(5,5,2);
   }
   async function loop(){
     while (true){
       state.cells.clear(); state.bgOn = true; state.tool = "paint"; state.brush.sh = "C"; state.brush.rot = 0; state.brush.col = "g";
-      renderShapes(); renderColors(); recolor(COLORS.g); centerCam(1.5); scheduleRender();
-      await glide(innerWidth/2, innerHeight*0.5); await sleep(800);
+      renderShapes(); renderColors(); recolor(COLORS.g); centerCam(1.25); scheduleRender();
+      await glide(innerWidth/2, innerHeight*0.45); await sleep(700);
       await tulip();
-      await sleep(800); await tweenCam(1.05, 1300); await sleep(2600);   // 줌아웃 공개 후 잠시
+      await roundFlower();
+      await sleep(700); await tweenCam(0.95, 1300); await sleep(2600);   // 줌아웃 공개
     }
   }
   loop();
