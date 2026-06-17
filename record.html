@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>잔꽃 패턴 릴스 녹화기</title>
+<style>
+  *{box-sizing:border-box;}
+  body{margin:0;background:#262626;color:#eaeaea;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Segoe UI",sans-serif;
+       display:flex;flex-direction:column;align-items:center;gap:14px;padding:18px 14px 40px;}
+  h1{font-size:16px;font-weight:600;margin:6px 0 0;color:#ddd;}
+  p.hint{font-size:13px;color:#a8a8a8;margin:0;text-align:center;max-width:560px;line-height:1.6;}
+  canvas{background:#fff8ee;border-radius:12px;box-shadow:0 10px 36px #0008;height:74vh;max-height:840px;width:auto;display:block;}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;}
+  button{font:inherit;font-size:14px;padding:11px 20px;border-radius:10px;border:1px solid #555;background:#3a3a3a;color:#eee;cursor:pointer;}
+  button.primary{background:#548962;border-color:#548962;color:#fff8ee;font-weight:600;}
+  button:disabled{opacity:.45;cursor:default;}
+  #status{font-size:13px;color:#b6b6b6;min-height:18px;text-align:center;}
+  video{height:40vh;border-radius:10px;display:none;margin-top:4px;}
+</style>
+</head>
+<body>
+  <h1>잔꽃 패턴 릴스 녹화기 · 9:16</h1>
+  <p class="hint">이 탭을 <b>맨 앞에 둔 채</b> ‘녹화 시작’을 누르세요. 약 20초간 패턴이 그려지며 녹화되고, 끝나면 영상 파일이 자동 저장됩니다. (소리 없음 — 음악은 인스타/캡컷에서)</p>
+  <div class="row">
+    <button id="rec" class="primary">● 녹화 시작</button>
+    <button id="prev">미리보기(녹화 안 함)</button>
+  </div>
+  <div id="status">준비됨</div>
+  <canvas id="cv" width="1080" height="1920"></canvas>
+  <video id="preview" controls></video>
+
+<script>
+/* ───────── 캔버스 / 상수 ───────── */
+var W=1080, H=1920, BEIGE="#fff8ee", INK="#3d6249";
+var PAL={ p:"#ff92ce", y:"#ffcc66", g:"#548962" };
+var cv=document.getElementById("cv"), ctx=cv.getContext("2d");
+var CELL=96, OX=252, OY=430;                 // 셀 좌상단 = OX+x*CELL, OY+y*CELL
+function cellCenter(x,y){ return [OX+x*CELL+CELL/2, OY+y*CELL+CELL/2]; }
+function nowMs(){ return performance.now(); }
+function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
+
+/* 하단독 레이아웃 */
+var DOCKY=1500, pitch=88, gx0=540-748/2;     // groupW = 5*88 + 44 + 3*88 = 748
+var shapeXs=[], colorXs=[];
+for(var i=0;i<5;i++) shapeXs.push(gx0+pitch*i+44);
+var cst=gx0+5*pitch+44;
+for(var j=0;j<3;j++) colorXs.push(cst+pitch*j+44);
+
+/* ───────── 장면 상태 ───────── */
+var scene={ cells:[], cur:{x:540,y:900,k:1,kDisp:1,color:PAL.g}, sel:{sh:null,col:null}, titleA:0 };
+
+/* ───────── 그리기 ───────── */
+function rr(x,y,w,h,r){ ctx.beginPath();
+  if(ctx.roundRect){ ctx.roundRect(x,y,w,h,r); return; }
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath();
+}
+function drawShape(sh, rotDeg, color, s){
+  ctx.save();
+  if(sh==="Q"||sh==="I"){ ctx.translate(s/2,s/2); ctx.rotate(rotDeg*Math.PI/180); ctx.translate(-s/2,-s/2); }
+  ctx.fillStyle=color; ctx.strokeStyle=color; ctx.lineWidth=Math.max(1,s/40); ctx.lineJoin="round";
+  ctx.beginPath();
+  if(sh==="S"){ ctx.rect(0,0,s,s); }
+  else if(sh==="C"){ ctx.arc(s/2,s/2,s/2,0,Math.PI*2); }
+  else if(sh==="Q"){ ctx.moveTo(0,0); ctx.lineTo(s,0); ctx.arc(0,0,s,0,Math.PI/2); ctx.closePath(); }
+  else if(sh==="I"){ ctx.moveTo(s,0); ctx.lineTo(s,s); ctx.lineTo(0,s); ctx.arc(0,0,s,Math.PI/2,0,true); ctx.closePath(); }
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+function dispAngle(c){ var e=Math.min(1,(nowMs()-c.t0r)/220); var ee=1-Math.pow(1-e,3); return c.angleFrom+(c.angle-c.angleFrom)*ee; }
+function drawCell(c){
+  var e=Math.min(1,(nowMs()-c.tp)/300);
+  var pop = e<0.62 ? (0.55+0.82*e) : (1.06-0.06*((e-0.62)/0.38));   // 등장 팝(살짝 오버슈트)
+  ctx.save();
+  ctx.translate(OX+c.x*CELL+CELL/2, OY+c.y*CELL+CELL/2);
+  ctx.scale(pop,pop);
+  ctx.translate(-CELL/2,-CELL/2);
+  drawShape(c.sh, (c.sh==="Q"||c.sh==="I")?dispAngle(c):0, PAL[c.col], CELL);
+  ctx.restore();
+}
+function drawLeaf(x,y,color,k){
+  var S=46, LR=S/2;
+  ctx.save(); ctx.translate(x,y); ctx.scale(k,k);
+  ctx.beginPath();
+  ctx.moveTo(0,0); ctx.lineTo(S-LR,0);
+  ctx.arc(S-LR, LR, LR, -Math.PI/2, 0);
+  ctx.lineTo(S,S); ctx.lineTo(LR,S);
+  ctx.arc(LR, S-LR, LR, Math.PI/2, Math.PI);
+  ctx.closePath();
+  ctx.fillStyle=color; ctx.fill();
+  ctx.lineWidth=2.6; ctx.lineJoin="round"; ctx.strokeStyle=BEIGE; ctx.stroke();
+  ctx.restore();
+}
+function drawGrid(){
+  ctx.save(); ctx.strokeStyle="rgba(84,137,98,.12)"; ctx.lineWidth=1.5;
+  var y0=330, y1=1380;
+  for(var x=OX-3*CELL; x<=OX+9*CELL; x+=CELL){ ctx.beginPath(); ctx.moveTo(x,y0); ctx.lineTo(x,y1); ctx.stroke(); }
+  for(var y=OY-2*CELL; y<=y1; y+=CELL){ if(y<y0) continue; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  ctx.restore();
+}
+function drawDock(){
+  var left=shapeXs[0]-54, right=colorXs[2]+54, top=DOCKY-62, h=124;
+  rr(left,top,right-left,h,28); ctx.fillStyle="#fffdf8"; ctx.fill(); ctx.lineWidth=1.5; ctx.strokeStyle="rgba(61,75,58,.16)"; ctx.stroke();
+  var selCol=PAL[scene.sel.col]||PAL.g, SH=["S","C","Q","I","E"], k;
+  for(k=0;k<5;k++){ var cx=shapeXs[k];
+    if(scene.sel.sh===SH[k]){ rr(cx-42,DOCKY-42,84,84,16); ctx.fillStyle="rgba(84,137,98,.16)"; ctx.fill(); }
+    if(SH[k]==="E"){ ctx.save(); ctx.translate(cx-22,DOCKY-22); ctx.strokeStyle="rgba(61,75,58,.4)"; ctx.lineWidth=2.4; ctx.setLineDash([6,6]); rr(0,0,44,44,8); ctx.stroke(); ctx.setLineDash([]); ctx.restore(); }
+    else { ctx.save(); ctx.translate(cx-22,DOCKY-22); drawShape(SH[k],0,selCol,44); ctx.restore(); }
+  }
+  var CS=["p","y","g"];
+  for(k=0;k<3;k++){ var ccx=colorXs[k];
+    ctx.beginPath(); ctx.arc(ccx,DOCKY,27,0,Math.PI*2); ctx.fillStyle=PAL[CS[k]]; ctx.fill();
+    if(scene.sel.col===CS[k]){
+      ctx.beginPath(); ctx.arc(ccx,DOCKY,35,0,Math.PI*2); ctx.lineWidth=4.5; ctx.strokeStyle="#fffdf8"; ctx.stroke();
+      ctx.beginPath(); ctx.arc(ccx,DOCKY,35,0,Math.PI*2); ctx.lineWidth=3; ctx.strokeStyle=PAL.g; ctx.stroke();
+    }
+  }
+}
+function draw(){
+  scene.cur.kDisp += (scene.cur.k - scene.cur.kDisp)*0.4;     // 누름 부드럽게
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle=BEIGE; ctx.fillRect(0,0,W,H);
+  drawGrid();
+  for(var i=0;i<scene.cells.length;i++) drawCell(scene.cells[i]);
+  ctx.textAlign="center";
+  ctx.globalAlpha=scene.titleA;
+  ctx.fillStyle=INK; ctx.font="600 62px -apple-system,system-ui,sans-serif"; ctx.fillText("잔꽃 패턴 메이커", 540, 232);
+  ctx.fillStyle="#9a9482"; ctx.font="500 30px -apple-system,system-ui,sans-serif"; ctx.fillText("내 손으로 그리는 꽃 패턴", 540, 286);
+  ctx.globalAlpha=1;
+  drawDock();
+  ctx.fillStyle="#9a9482"; ctx.font="500 27px -apple-system,system-ui,sans-serif"; ctx.fillText("greenteavillain.github.io/janflower-pattern-maker", 540, 1690);
+  drawLeaf(scene.cur.x, scene.cur.y, scene.cur.color, scene.cur.kDisp);
+}
+(function loop(){ draw(); requestAnimationFrame(loop); })();
+
+/* ───────── 동작(스토리보드) ───────── */
+var MOVE=520, DOCKP=360, PLACE=300, ROT=300, DRAGSEG=230;
+function tweenTitle(){ var t0=nowMs(); return new Promise(function(res){ (function s(){ var p=Math.min(1,(nowMs()-t0)/600); scene.titleA=p; if(p<1) requestAnimationFrame(s); else res(); })(); }); }
+function moveCursor(tx,ty,dur){
+  var sx=scene.cur.x, sy=scene.cur.y, t0=nowMs();
+  return new Promise(function(res){ (function s(){ var p=Math.min(1,(nowMs()-t0)/dur), e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    scene.cur.x=sx+(tx-sx)*e; scene.cur.y=sy+(ty-sy)*e; if(p<1) requestAnimationFrame(s); else res(); })(); });
+}
+async function tap(){ scene.cur.k=0.78; await sleep(95); scene.cur.k=1; await sleep(70); }
+async function pickColor(c){ var i={p:0,y:1,g:2}[c]; await moveCursor(colorXs[i],DOCKY,MOVE); await tap(); scene.sel.col=c; scene.cur.color=PAL[c]; await sleep(DOCKP-70); }
+async function pickShape(sh){ var i={S:0,C:1,Q:2,I:3,E:4}[sh]; await moveCursor(shapeXs[i],DOCKY,MOVE); await tap(); scene.sel.sh=sh; await sleep(DOCKP-70); }
+async function place0(x,y,sh,col){ var c=cellCenter(x,y); await moveCursor(c[0],c[1],MOVE); scene.cur.k=0.78; await sleep(95);
+  var cell={x:x,y:y,sh:sh,col:col,angle:0,angleFrom:0,t0r:nowMs(),tp:nowMs()}; scene.cells.push(cell); scene.cur.k=1; await sleep(PLACE); return cell; }
+async function rotateOnce(cell){ scene.cur.k=0.78; await sleep(85); cell.angleFrom=dispAngle(cell); cell.angle+=90; cell.t0r=nowMs(); scene.cur.k=1; await sleep(ROT); }
+async function placeRot(x,y,sh,col,rot){ var cell=await place0(x,y,sh,col); for(var r=0;r<rot;r++) await rotateOnce(cell); }
+async function dragSweep(list,col){
+  var a=cellCenter(list[0][0],list[0][1]); await moveCursor(a[0],a[1],MOVE);
+  scene.cur.k=0.78;                                  // 펜 누른 채 유지
+  scene.cells.push({x:list[0][0],y:list[0][1],sh:"C",col:col,angle:0,angleFrom:0,t0r:nowMs(),tp:nowMs()});
+  for(var i=1;i<list.length;i++){ var c=cellCenter(list[i][0],list[i][1]); await moveCursor(c[0],c[1],DRAGSEG);
+    scene.cells.push({x:list[i][0],y:list[i][1],sh:"C",col:col,angle:0,angleFrom:0,t0r:nowMs(),tp:nowMs()}); }
+  scene.cur.k=1; await sleep(PLACE);
+}
+async function play(){
+  scene.cells.length=0; scene.sel={sh:null,col:null}; scene.titleA=0;
+  scene.cur.x=540; scene.cur.y=980; scene.cur.color=PAL.g;
+  await tweenTitle(); await sleep(250);
+  // 튤립 (아래 라인 = row5)
+  await pickColor("p"); await pickShape("Q");
+  await placeRot(0,2,"Q","p",3); await placeRot(1,2,"Q","p",2);
+  await placeRot(0,3,"Q","p",3); await placeRot(1,3,"Q","p",2);
+  await placeRot(0,4,"Q","p",1); await placeRot(1,4,"Q","p",0);
+  await pickColor("g");
+  await placeRot(0,5,"Q","g",1); await placeRot(1,5,"Q","g",0);
+  // 동글이꽃 (원은 드래그)
+  await pickColor("y"); await pickShape("C");
+  await dragSweep([[5,0],[4,1],[4,2],[4,3],[4,4],[5,4],[5,3]],"y");
+  await pickColor("g"); await pickShape("Q");
+  await placeRot(4,5,"Q","g",3); await placeRot(5,5,"Q","g",2);
+  await sleep(1600);
+}
+
+/* ───────── 녹화 ───────── */
+var recBtn=document.getElementById("rec"), prevBtn=document.getElementById("prev"), statusEl=document.getElementById("status"), busy=false;
+function pickMime(){ var o=["video/mp4;codecs=avc1.42E01E","video/mp4","video/webm;codecs=vp9","video/webm;codecs=vp8","video/webm"];
+  for(var i=0;i<o.length;i++){ try{ if(MediaRecorder.isTypeSupported(o[i])) return o[i]; }catch(e){} } return ""; }
+prevBtn.addEventListener("click", async function(){ if(busy) return; busy=true; recBtn.disabled=prevBtn.disabled=true; statusEl.textContent="미리보기 중…"; await play(); statusEl.textContent="미리보기 끝. ‘녹화 시작’으로 저장하세요."; recBtn.disabled=prevBtn.disabled=false; busy=false; });
+recBtn.addEventListener("click", async function(){
+  if(busy) return; busy=true; recBtn.disabled=prevBtn.disabled=true;
+  if(typeof MediaRecorder==="undefined"){ statusEl.textContent="이 브라우저는 MediaRecorder 미지원 — Chrome 권장"; recBtn.disabled=prevBtn.disabled=false; busy=false; return; }
+  statusEl.textContent="녹화 중… 이 탭을 그대로 두세요 (약 20초)";
+  var stream=cv.captureStream(30), mime=pickMime();
+  var rec; try{ rec=new MediaRecorder(stream, mime?{mimeType:mime,videoBitsPerSecond:9000000}:{}); }
+  catch(e){ statusEl.textContent="녹화 시작 실패: "+e; recBtn.disabled=prevBtn.disabled=false; busy=false; return; }
+  var chunks=[];
+  rec.ondataavailable=function(e){ if(e.data&&e.data.size) chunks.push(e.data); };
+  rec.onstop=function(){
+    var ext=(mime.indexOf("mp4")>=0)?"mp4":"webm";
+    var blob=new Blob(chunks,{type:(mime||"video/webm").split(";")[0]});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement("a"); a.href=url; a.download="janflower-reel."+ext; document.body.appendChild(a); a.click(); a.remove();
+    var pv=document.getElementById("preview"); pv.src=url; pv.style.display="block";
+    statusEl.textContent="완료! janflower-reel."+ext+" 저장됨 ("+Math.round(blob.size/1048576)+"MB). 아래 미리보기 확인.";
+    recBtn.disabled=prevBtn.disabled=false; busy=false;
+  };
+  rec.start();
+  await play();
+  await sleep(400);
+  rec.stop();
+});
+</script>
+</body>
+</html>
