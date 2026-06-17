@@ -2411,8 +2411,85 @@ setPanel(false);
 
 // 첫 화면: 공유 링크(?p=)면 온라인에서 / 아니면 저장본 복원 / 둘 다 없으면 꽃밭
 // (데스크탑 100% / 모바일 40%). 뷰포트 폭이 확정될 때까지 다시 맞춘다.
+/* ───────────── 녹화용 자동 시연 (인스타 릴스). ?demo=1 로 진입. 하단독만 사용 ───────────── */
+function runDemo(){
+  allowSave = false;                              // 데모 중엔 로컬 저장 끔 (사용자 저장본 보호)
+  document.body.classList.add("demomode");
+  const css = document.createElement("style");
+  css.textContent =
+    ".demomode #libFab,.demomode #gridFab,.demomode #fab,.demomode #zoomHud,.demomode #mtop,.demomode #mtoolbar,.demomode #roombar,.demomode #placebar{display:none!important;}"
+    + ".demomode #board{cursor:none!important;}"
+    + "#demoCursor{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;transition:transform .28s cubic-bezier(.4,0,.2,1);will-change:transform;}"
+    + "#demoCursor .dc-in{transition:transform .14s ease;transform-origin:4px 3px;}"
+    + "#demoCursor.clk .dc-in{transform:scale(.58);}";
+  document.head.appendChild(css);
+
+  const cur = document.createElement("div");
+  cur.id = "demoCursor";
+  cur.innerHTML = "<div class='dc-in'><svg width='26' height='30' viewBox='0 0 26 30'><path d='M3 2 L3 23 L9 18 L13 27 L17 25 L13 16 L21 16 Z' fill='#2b2b2b' stroke='#fff8ee' stroke-width='1.7' stroke-linejoin='round'/></svg></div>";
+  document.body.appendChild(cur);
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const GLIDE = 320, DOCK_HOLD = 150, PAINT_HOLD = 90;
+  cur.style.transform = `translate(${innerWidth/2}px,${innerHeight/2}px)`;
+  async function glide(x, y){ cur.style.transform = `translate(${x}px,${y}px)`; await sleep(GLIDE); }
+  function pulse(){ cur.classList.add("clk"); setTimeout(() => cur.classList.remove("clk"), 150); }
+
+  const SHAPE_IDX = { S:0, C:1, Q:2, I:3, E:4 }, COL_IDX = { p:0, y:1, g:2 };
+  async function selShape(sh){
+    const b = document.querySelectorAll("#dShapes .shape-btn")[SHAPE_IDX[sh]]; if (!b) return;
+    const r = b.getBoundingClientRect();
+    await glide(r.left + r.width/2, r.top + r.height/2); pulse();
+    state.tool = "paint"; state.brush.sh = sh; if (!rotatable(sh)) state.brush.rot = 0;
+    renderShapes(); await sleep(DOCK_HOLD);
+  }
+  async function selColor(col){
+    const b = document.querySelectorAll("#dColors .swatch")[COL_IDX[col]]; if (!b) return;
+    const r = b.getBoundingClientRect();
+    await glide(r.left + r.width/2, r.top + r.height/2); pulse();
+    state.brush.col = col; renderColors(); renderShapes(); await sleep(DOCK_HOLD);
+  }
+  async function paintCell(x, y, rot){
+    const r = boardEl.getBoundingClientRect(), z = state.cam.z;
+    await glide((x*CELL + CELL/2 - state.cam.x)*z + r.left, (y*CELL + CELL/2 - state.cam.y)*z + r.top);
+    pulse(); setCell(x, y, { sh: state.brush.sh, rot, col: state.brush.col });
+    scheduleRender(); await sleep(PAINT_HOLD);
+  }
+  function centerCam(z){ const r = boardEl.getBoundingClientRect(); state.cam.z = z; state.cam.x = 180 - r.width/(2*z); state.cam.y = 120 - r.height/(2*z); }
+  function tweenCam(tz, dur){
+    const r = boardEl.getBoundingClientRect();
+    const sz = state.cam.z, sx0 = state.cam.x, sy0 = state.cam.y;
+    const tx = 180 - r.width/(2*tz), ty = 120 - r.height/(2*tz), t0 = performance.now();
+    return new Promise(res => { function f(now){ const p = Math.min(1, (now-t0)/dur), e = p<.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2;
+      state.cam.z = sz+(tz-sz)*e; state.cam.x = sx0+(tx-sx0)*e; state.cam.y = sy0+(ty-sy0)*e; scheduleRender();
+      if (p<1) requestAnimationFrame(f); else res(); } requestAnimationFrame(f); });
+  }
+
+  // 하단독 기본 도형(Q 사분원·C 원·S 정사각)+색만으로 튤립 1 + 들꽃 1
+  const GROUPS = [
+    { sh:"Q", col:"p", cells:[[0,0,3],[1,0,2],[0,1,3],[1,1,2],[0,2,1],[1,2,0]] },
+    { sh:"Q", col:"g", cells:[[0,3,1],[1,3,0],[3,3,2],[5,3,3]] },
+    { sh:"C", col:"p", cells:[[4,0,0],[3,1,0],[5,1,0],[4,2,0]] },
+    { sh:"C", col:"y", cells:[[4,1,0]] },
+    { sh:"S", col:"g", cells:[[4,3,0]] },
+  ];
+  async function loop(){
+    while (true){
+      state.cells.clear(); state.bgOn = true; centerCam(1.5); scheduleRender();
+      await glide(innerWidth/2, innerHeight*0.55); await sleep(550);
+      for (const g of GROUPS){
+        await selShape(g.sh); await selColor(g.col);
+        for (const c of g.cells) await paintCell(c[0], c[1], c[2]);
+      }
+      await sleep(550); await tweenCam(0.9, 1100); await sleep(2200);   // 줌아웃 공개 후 잠시
+    }
+  }
+  loop();
+}
+
 (function init(){
   const params = new URLSearchParams(location.search);
+  if (params.get("demo")){ runDemo(); return; }   // 녹화용 자동 시연 (하단독으로 그리기)
   if (!IS_TOUCH) showMyLeaf();   // 로드 시 솔로 잎 커서 적용(협업 입장하면 방 색으로 갱신)
   if (params.get("room")){                                                   // 협업 방 링크
     if (IS_TOUCH){ toast("협업은 지금 데스크톱에서만 돼요 (모바일은 준비 중이에요)", 4200); }   // 모바일은 안내만 하고 일반 로드로
