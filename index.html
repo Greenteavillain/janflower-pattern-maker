@@ -2695,11 +2695,11 @@ function runCollabDemo(){
       const pa = (async () => { await sleep(rnd(0, 500));   await remoteDraw(R1, tulip); })();
       const pb = (async () => { await sleep(rnd(150, 650)); await myDraw(round); })();
       const pc = (async () => { await sleep(rnd(300, 900)); await remoteDraw(R2, pin); })();
-      await sleep(rnd(1000, 1600)); await remoteSay(R1, "같이 그리자!");
-      await sleep(rnd(1700, 2700)); await remoteSay(R2, "오 예쁘다");
+      await sleep(rnd(1000, 1600)); await remoteSay(R1, "나 튤립 그릴게~");
+      await sleep(rnd(1700, 2700)); await remoteSay(R2, "오 색감 예쁘다 ㅋㅋ");
       await Promise.all([pa, pb, pc]);
-      await sleep(rnd(300, 700));  myChat("우와 최고!");
-      await sleep(rnd(600, 1200)); await remoteSay(R1, "완성!");
+      await sleep(rnd(300, 700));  myChat("헐 잘 어울린다");
+      await sleep(rnd(600, 1200)); await remoteSay(R1, "다 됐다 ㅎㅎ");
       await sleep(rnd(2800, 3800));
     }
   }
