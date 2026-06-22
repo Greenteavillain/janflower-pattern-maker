@@ -145,6 +145,8 @@
     display:flex; align-items:center;
   }
   .sbtn:hover{filter:brightness(1.06);}
+  /* 영역선택 편집버튼 임시 숨김 (나중에 부활) — 갤러리 업로드(올리기)만 노출 */
+  #selCopy, #selCut, #selTile, #selDelete{ display:none !important; }
   .sbtn[hidden]{display:none;}
   @media (max-width:760px){ .selbar{top:56px;} }
 
@@ -445,7 +447,7 @@
     <svg id="board" xmlns="http://www.w3.org/2000/svg"></svg>
     <button class="zoomhud surface" id="zoomHud" title="100%로 재설정">100%</button>
     <div class="selbar surface" id="selbar">
-      <span class="nm" id="selInfo">영역을 드래그해 선택하세요</span>
+      <span class="nm" id="selInfo">갤러리에 올릴 영역을 드래그하세요</span>
       <button class="sbtn" id="selCopy" hidden>복사</button>
       <button class="sbtn" id="selCut" hidden>잘라내기</button>
       <button class="sbtn" id="selTile" hidden>타일</button>
@@ -1998,7 +2000,7 @@ function selCells(){
 }
 function updateSelbar(){
   if (!state.selRect){
-    selInfo.textContent = tilePending ? "채울 영역을 드래그하세요" : "영역을 드래그해 선택하세요";
+    selInfo.textContent = tilePending ? "채울 영역을 드래그하세요" : "갤러리에 올릴 영역을 드래그하세요";
     [selUpload, selCopy, selCut, selTile, selDelete].forEach(b => b.hidden = true);
     return;
   }
@@ -2017,7 +2019,7 @@ function setSelectMode(on){
   const dSel = document.getElementById("dSelect"), mSel = document.getElementById("mSelect");
   if (dSel) dSel.classList.toggle("on", on);
   if (mSel) mSel.classList.toggle("on", on);
-  if (on) toast("영역을 드래그하세요 → 복사·타일·삭제·갤러리 올리기", 3500);
+  if (on) toast("갤러리에 올릴 영역을 드래그하세요", 3500);
   updateSelbar();
   scheduleRender();
 }
