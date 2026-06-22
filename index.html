@@ -647,6 +647,8 @@ const BG = "#fff8ee";
 // 회전 의미 — Q(사분원): 부채꼴 중심이 놓이는 모서리 / I(역사분원): 파인 모서리
 // 0 = 좌상, 1 = 우상, 2 = 우하, 3 = 좌하  (rotate(90°×rot)로 구현)
 const MIRROR_ROT = [1, 0, 3, 2];       // 좌우반전 시 회전값 매핑
+const MIRROR_ROT_Y = [3, 2, 1, 0];     // 상하반전 시 회전값 매핑
+const ROT90 = [1, 2, 3, 0], ROT180 = [2, 3, 0, 1], ROT270 = [3, 0, 1, 2];   // 90/180/270° 회전
 
 const ZMIN = 0.08, ZMAX = 5;           // z = 월드 1단위당 화면 px (z=1 → 셀 60px = 100%)
 const GRID_MIN_PX = 14;                // 셀이 이보다 작아지면 격자 자동 숨김
@@ -658,7 +660,9 @@ const state = {
   tool: "paint",                       // "paint" | "erase"
   hand: false,
   mirror: false,
-  axis: 0,                             // 미러 축 위치, 반 칸 단위 (짝수 = 셀 경계, 홀수 = 셀 중앙)
+  symMode: 1,                          // 1=좌우 2=상하좌우(4방) 3=라디얼4겹
+  axis: 0,                             // 세로 대칭축, 반 칸 단위 (짝수 = 셀 경계, 홀수 = 셀 중앙)
+  axisY: 0,                            // 가로 대칭축, 반 칸 단위
   bgOn: true,
   showGrid: true,
   placing: null,                       // null | {name, cells:[{x,y,sh,rot,col}], cols, rows}
@@ -900,13 +904,13 @@ function render(){
 
   // 미러 기준선 + 드래그 핸들
   if (state.mirror){
-    const AX = state.axis * CELL / 2;
-    if (AX > v.x - CELL && AX < v.x + v.w + CELL){
-      s += `<line x1="${AX}" y1="${v.y}" x2="${AX}" y2="${v.y+v.h}" stroke="${COLORS.p}" stroke-width="2"
-            stroke-dasharray="7 7" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
-      s += `<circle cx="${AX}" cy="${v.y + v.h/2}" r="${10/state.cam.z}" fill="${COLORS.p}"
-            stroke="#fff" stroke-width="${2/state.cam.z}" pointer-events="none"/>`;
-    }
+    const AX = state.axis * CELL / 2, AY = state.axisY * CELL / 2;
+    const vline = `<line x1="${AX}" y1="${v.y}" x2="${AX}" y2="${v.y+v.h}" stroke="${COLORS.p}" stroke-width="2" stroke-dasharray="7 7" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+    const hline = `<line x1="${v.x}" y1="${AY}" x2="${v.x+v.w}" y2="${AY}" stroke="${COLORS.p}" stroke-width="2" stroke-dasharray="7 7" vector-effect="non-scaling-stroke" pointer-events="none"/>`;
+    const handle = `<circle cx="${AX}" cy="${v.y + v.h/2}" r="${10/state.cam.z}" fill="${COLORS.p}" stroke="#fff" stroke-width="${2/state.cam.z}" pointer-events="none"/>`;
+    const dot = `<circle cx="${AX}" cy="${AY}" r="${9/state.cam.z}" fill="${COLORS.p}" stroke="#fff" stroke-width="${2/state.cam.z}" pointer-events="none"/>`;
+    if (state.symMode === 1) s += vline + handle;
+    else s += vline + hline + dot;
   }
 
   // 배치 모드 고스트 미리보기 (미러 모드면 반전 사본도 함께)
@@ -924,11 +928,12 @@ function render(){
     if (state.mirror){
       let mg = "";
       for (const c of state.placing.cells){
-        const gx = mirrorX(a.x + c.x);
-        const rot = rotatable(c.sh) ? MIRROR_ROT[c.rot] : 0;
-        mg += `<g transform="translate(${gx * CELL},${(a.y + c.y) * CELL})">${shapeMarkup(c.sh, rot, COLORS[c.col], CELL)}</g>`;
+        for (const t of symMates(a.x + c.x, a.y + c.y)){
+          const rot = rotatable(c.sh) ? t.rk[c.rot] : 0;
+          mg += `<g transform="translate(${t.x * CELL},${t.y * CELL})">${shapeMarkup(c.sh, rot, COLORS[c.col], CELL)}</g>`;
+        }
       }
-      s += `<g opacity="0.35" pointer-events="none">${mg}</g>`;
+      if (mg) s += `<g opacity="0.35" pointer-events="none">${mg}</g>`;
     }
   }
 
@@ -1112,17 +1117,46 @@ function getCell(x, y){ return state.cells.get(key(x, y)) || null; }
 function sameCell(c, brush){
   return !!c && c.sh === brush.sh && c.col === brush.col;
 }
-const mirrorX = (x) => state.axis - 1 - x;   // 미러 축 기준 반대편 셀 (축은 반 칸 단위)
+const mirrorX = (x) => state.axis - 1 - x;   // 세로축 기준 반대편 셀 (축은 반 칸 단위)
+const mirrorY = (y) => state.axisY - 1 - y;  // 가로축 기준
+
+// 대칭 사본 위치들(본인 제외). 좌우(1)/상하좌우4방(2)/라디얼4겹(3). rk[rot]=변환된 회전.
+function symMates(x, y){
+  if (!state.mirror) return [];
+  const A = state.axis, B = state.axisY, mode = state.symMode, mx = A - 1 - x, my = B - 1 - y, out = [];
+  if (mode === 1){ out.push({ x: mx, y: y, rk: MIRROR_ROT }); }
+  else if (mode === 2){ out.push({ x: mx, y: y, rk: MIRROR_ROT }); out.push({ x: x, y: my, rk: MIRROR_ROT_Y }); out.push({ x: mx, y: my, rk: ROT180 }); }
+  else if (mode === 3){ const cx = Math.round(A / 2), cy = Math.round(B / 2);
+    out.push({ x: cx - cy + y, y: cx + cy - x - 1, rk: ROT90 });
+    out.push({ x: 2 * cx - x - 1, y: 2 * cy - y - 1, rk: ROT180 });
+    out.push({ x: cx + cy - y - 1, y: cy - cx + x, rk: ROT270 });
+  }
+  return out.filter(t => !(t.x === x && t.y === y));
+}
+function applyMates(x, y, val, changes){
+  for (const t of symMates(x, y)){
+    const v = val ? { sh: val.sh, rot: rotatable(val.sh) ? t.rk[val.rot] : 0, col: val.col } : null;
+    setCell(t.x, t.y, v);
+    if (changes) changes.push({ x: t.x, y: t.y, val: v });
+  }
+}
+function brushCellSet(x, y){
+  const val = state.tool === "erase" ? null : { sh: state.brush.sh, rot: rotatable(state.brush.sh) ? state.brush.rot : 0, col: state.brush.col };
+  setCell(x, y, val);
+  applyMates(x, y, val);
+}
+function drawLine(x0, y0, x1, y1){   // Shift+클릭 직선 (브러시로 칸 칠함, 대칭도 적용)
+  let dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0), sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1, err = dx - dy, x = x0, y = y0;
+  while (true){ brushCellSet(x, y); if (x === x1 && y === y1) break; const e2 = 2 * err; if (e2 > -dy){ err -= dy; x += sx; } if (e2 < dx){ err += dx; y += sy; } }
+  if (rtChannel) roomSendSync();
+  scheduleRender();
+}
 
 function paintAt(x, y, initial){
-  const mx = mirrorX(x);
   const changes = [];
   const apply = (val) => {
     setCell(x, y, val); changes.push({ x, y, val });
-    if (state.mirror && mx !== x){
-      const mval = val ? { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 } : null;
-      setCell(mx, y, mval); changes.push({ x: mx, y, val: mval });
-    }
+    applyMates(x, y, val, changes);
   };
 
   if (state.tool === "erase"){
@@ -1159,15 +1193,8 @@ function placeStampAt(anchor){
   for (const c of state.placing.cells){
     setCell(anchor.x + c.x, anchor.y + c.y, { sh: c.sh, rot: c.rot, col: c.col });
   }
-  if (state.mirror){
-    for (const c of state.placing.cells){
-      const gx = mirrorX(anchor.x + c.x);
-      setCell(gx, anchor.y + c.y, {
-        sh: c.sh,
-        rot: rotatable(c.sh) ? MIRROR_ROT[c.rot] : 0,
-        col: c.col,
-      });
-    }
+  for (const c of state.placing.cells){
+    applyMates(anchor.x + c.x, anchor.y + c.y, { sh: c.sh, rot: c.rot, col: c.col });
   }
   if (rtChannel) roomSendSync();
   scheduleRender();
@@ -1249,6 +1276,7 @@ let spaceDown = false;
 let placeDragPointer = null;   // 터치 배치: 끌어서 놓기
 let axisDragPointer = null;    // 미러 축 드래그
 let selecting = false;         // 영역 선택 드래그 중
+let lineAnchor = null;         // Shift+클릭 직선 기준점(마지막으로 칠한 칸)
 let selStart = null;           // 선택 시작 셀
 
 function updateCursor(){
@@ -1335,12 +1363,20 @@ boardEl.addEventListener("pointerdown", (e) => {
   }
 
   // 칠하기 시작
+  const pc = cellFromEvent(e);
+  if (e.shiftKey && lineAnchor){        // Shift+클릭 = 기준점→여기 직선
+    pushUndo();
+    drawLine(lineAnchor.x, lineAnchor.y, pc.x, pc.y);
+    lineAnchor = { x: pc.x, y: pc.y };
+    return;
+  }
   painting = true;
   setLeafPressed(true);                 // 누르는 동안 잎 커서 살짝 작아짐(클릭 피드백)
   pushUndo();
-  const { x, y } = cellFromEvent(e);
+  const x = pc.x, y = pc.y;
   lastCell = key(x, y);
   paintAt(x, y, true);
+  lineAnchor = { x, y };
 });
 
 boardEl.addEventListener("pointermove", (e) => {
@@ -1417,6 +1453,7 @@ boardEl.addEventListener("pointermove", (e) => {
     if (k === lastCell) return;
     lastCell = k;
     paintAt(x, y, false);
+    lineAnchor = { x, y };
   }
 });
 
@@ -1684,14 +1721,18 @@ document.getElementById("rotateBtn").addEventListener("click", () => {
 });
 
 const mirrorBtn = document.getElementById("mirrorBtn");
+const SYM_NAMES = { 1: "좌우 대칭", 2: "상하좌우 (4방)", 3: "라디얼 4겹" };
 mirrorBtn.addEventListener("click", () => {
-  state.mirror = !state.mirror;
-  if (state.mirror){
-    // 켜는 순간, 현재 화면 중앙에 축 생성 (반 칸 단위 스냅)
-    const v = visibleWorld();
+  const next = state.mirror ? state.symMode + 1 : 1;   // 끔 → 좌우 → 4방 → 라디얼 → 끔
+  if (next > 3){ state.mirror = false; }
+  else {
+    state.mirror = true; state.symMode = next;
+    const v = visibleWorld();                          // 축·중심을 현재 화면 중앙으로
     state.axis = Math.round((v.x + v.w / 2) / (CELL / 2));
+    state.axisY = Math.round((v.y + v.h / 2) / (CELL / 2));
   }
   mirrorBtn.classList.toggle("on", state.mirror);
+  toast(state.mirror ? "대칭: " + SYM_NAMES[state.symMode] : "대칭 끔", 1800);
   scheduleRender();
 });
 
@@ -1762,16 +1803,12 @@ document.getElementById("randomBtn").addEventListener("click", () => {
   const done = new Set();
   for (let y = cy0; y <= cy1; y++){
     for (let x = cx0; x <= cx1; x++){
-      const cx = state.mirror ? Math.max(x, mirrorX(x)) : x;
-      const k = key(cx, y);
+      const k = key(x, y);
       if (done.has(k)) continue;
       done.add(k);
       const val = randomCellVal();
-      setCell(cx, y, val);
-      if (state.mirror){
-        const mx = mirrorX(cx);
-        if (mx !== cx) setCell(mx, y, val ? { ...val, rot: rotatable(val.sh) ? MIRROR_ROT[val.rot] : 0 } : null);
-      }
+      setCell(x, y, val);
+      for (const t of symMates(x, y)){ done.add(key(t.x, t.y)); setCell(t.x, t.y, val ? { sh: val.sh, rot: rotatable(val.sh) ? t.rk[val.rot] : 0, col: val.col } : null); }
     }
   }
   if (rtChannel) roomSendSync();
