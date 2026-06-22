@@ -705,35 +705,18 @@ const PRESETS = [
       "yC0 .",
       "yC0 yC0",
       "yC0 yC0",
-      "gQ3 gQ2",
+      "gQ2 gQ3",
   ]},
   { name:"바람개비", cat:"꽃", data:[
       "yQ1 yQ2",
       "yQ0 yQ3",
-      "gQ3 gQ2",
+      "gQ2 gQ3",
   ]},
   { name:"들꽃", cat:"꽃", data:[
       ".   pC0 .",
       "pC0 yC0 pC0",
       ".   pC0 .",
       "gQ2 gS0 gQ3",
-  ]},
-  { name:"코스모스", cat:"꽃", data:[
-      "pQ0 pC0 pQ1",
-      "pC0 yC0 pC0",
-      "pQ3 pC0 pQ2",
-      "gQ2 gS0 gQ3",
-  ]},
-  { name:"해바라기", cat:"꽃", data:[
-      "yQ0 yC0 yQ1",
-      "yC0 gC0 yC0",
-      "yQ3 yC0 yQ2",
-      "gQ2 gS0 gQ3",
-  ]},
-  { name:"나팔꽃", cat:"꽃", data:[
-      "pI0 pI1",
-      "pQ1 pQ0",
-      "gQ3 gQ2",
   ]},
   { name:"작약", cat:"꽃", data:[
       "pQ2 pQ3",
@@ -752,28 +735,13 @@ const PRESETS = [
       "yC0 yC0",
       "gQ3 gQ2",
   ]},
-  { name:"수국", cat:"꽃", data:[
-      ".   pC0 pC0",
-      "pC0 yC0 pC0",
-      ".   pC0 .",
-      "gQ2 gS0 gQ3",
-  ]},
   { name:"연꽃", cat:"꽃", data:[
       ".   pQ2 pQ3 .",
       "pQ3 pS0 pS0 pQ2",
       ".   gQ1 gQ0 .",
   ]},
-  { name:"팬지", cat:"꽃", data:[
-      "pC0 pC0",
-      "pQ1 pQ0",
-      "gQ3 gQ2",
-  ]},
   { name:"채송화", cat:"꽃", data:[
       "pC0 yC0",
-      "gQ3 gQ2",
-  ]},
-  { name:"클로버", cat:"꽃", data:[
-      "gQ0 gQ1",
       "gQ3 gQ2",
   ]},
   { name:"새싹", cat:"꽃", data:[
@@ -781,66 +749,8 @@ const PRESETS = [
   ]},
 
   /* ── 픽토그램 ── */
-  { name:"사람", cat:"픽토그램", data:[
-      ".   gC0 .",
-      "gQ2 gS0 gQ3",
-      ".   gS0 .",
-      ".   gS0 .",
-  ]},
-  { name:"여성", cat:"픽토그램", data:[
-      ".   gC0 .",
-      ".   gS0 .",
-      "gQ1 .   gQ0",
-      ".   gS0 .",
-  ]},
-  { name:"휠체어", cat:"픽토그램", data:[
-      ".   gC0 .",
-      "gQ2 gQ3 gS0",
-      "gQ1 gQ0 gQ1",
-  ]},
-  { name:"안내", cat:"픽토그램", data:[
-      "gC0",
-      "gS0",
-      "gS0",
-      "gQ1",
-  ]},
-  { name:"소화기", cat:"픽토그램", data:[
-      "gC0 gQ1",
-      "gQ2 gQ3",
-      "gS0 gS0",
-  ]},
-  { name:"주의", cat:"픽토그램", data:[
-      "gQ2 .   gQ3",
-      ".   gS0 .",
-      "gQ1 .   gQ0",
-  ]},
-  { name:"주차", cat:"픽토그램", data:[
-      "gS0 gS0",
-      "gS0 gI0",
-      "gS0 .",
-  ]},
-  { name:"경고", cat:"픽토그램", data:[
-      "gS0",
-      "gS0",
-      ".",
-      "gC0",
-  ]},
-  { name:"카페", cat:"픽토그램", data:[
-      "gS0 gI1 gQ3",
-      "gQ1 gQ0 .",
-  ]},
 
   /* ── 모양 ── */
-  { name:"하트", cat:"모양", data:[
-      "pQ2 pQ3 pQ2 pQ3",
-      "pS0 pS0 pS0 pS0",
-      "pQ1 pS0 pS0 pQ0",
-      ".   pQ1 pQ0 .",
-  ]},
-  { name:"나비", cat:"모양", data:[
-      "pQ0 gC0 pQ1",
-      "pQ3 gC0 pQ2",
-  ]},
   { name:"해", cat:"모양", data:[
       "yQ0 .   .   yQ1",
       ".   yQ2 yQ3 .",
@@ -870,7 +780,7 @@ const PRESETS = [
       "pQ3 pQ2 .   yC0",
       "pQ3 pQ2 .   yC0 yC0 .   yQ1 yQ2",
       "pQ1 pQ0 .   yC0 yC0 .   yQ0 yQ3",
-      "gQ1 gQ0 .   gQ3 gQ2 .   gQ3 gQ2",
+      "gQ1 gQ0 .   gQ2 gQ3 .   gQ2 gQ3",
   ]},
   { name:"패턴 필드", cat:"장면", data:[
       "pQ2 pQ3 yQ1 yQ2 gQ2 gQ3 yS0 pC0 gC0 yI0 yI1 .",
@@ -1676,31 +1586,23 @@ function thumbSVG(parsed){
 function renderLibrary(){
   const body = document.getElementById("libBody");
   body.innerHTML = "";
-  const cats = [...new Set(PRESETS.map(p => p.cat))];
-  cats.forEach(cat => {
-    const h = document.createElement("h3");
-    h.className = "cat";
-    h.textContent = cat;
-    body.appendChild(h);
-    const grid = document.createElement("div");
-    grid.className = "lib-grid";
-    parsedPresets.forEach((parsed, i) => {
-      if (PRESETS[i].cat !== cat) return;
-      const b = document.createElement("button");
-      b.className = "lib-item" + (state.placing && state.placing.name === parsed.name ? " active" : "");
-      b.title = `${parsed.name} (${parsed.cols}×${parsed.rows})`;
-      b.innerHTML = `${thumbSVG(parsed)}<span class="nm">${parsed.name}</span>`;
-      b.addEventListener("click", () => {
-        if (state.placing && state.placing.name === parsed.name) setPlacing(null);
-        else {
-          setPlacing({ ...parsed, cells: parsed.cells.map(c => ({ ...c })) });
-          if (window.innerWidth <= 760) setLibrary(false);
-        }
-      });
-      grid.appendChild(b);
+  const grid = document.createElement("div");
+  grid.className = "lib-grid";
+  parsedPresets.forEach((parsed, i) => {
+    const b = document.createElement("button");
+    b.className = "lib-item" + (state.placing && state.placing.name === parsed.name ? " active" : "");
+    b.title = `${parsed.name} (${parsed.cols}×${parsed.rows})`;
+    b.innerHTML = `${thumbSVG(parsed)}<span class="nm">${parsed.name}</span>`;
+    b.addEventListener("click", () => {
+      if (state.placing && state.placing.name === parsed.name) setPlacing(null);
+      else {
+        setPlacing({ ...parsed, cells: parsed.cells.map(c => ({ ...c })) });
+        if (window.innerWidth <= 760) setLibrary(false);
+      }
     });
-    body.appendChild(grid);
+    grid.appendChild(b);
   });
+  body.appendChild(grid);
 }
 
 function setLibrary(open){
@@ -2509,7 +2411,7 @@ function runDemo(){
     await pickColor("y"); await useShape("C");
     await dragPaint([[5,0],[4,1],[4,2],[4,3],[4,4],[5,4],[5,3]]);
     await pickColor("g"); await useShape("Q");
-    await placeRot(4,5,3); await placeRot(5,5,2);
+    await placeRot(4,5,2); await placeRot(5,5,3);
   }
   async function loop(){
     while (true){
