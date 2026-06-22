@@ -2576,8 +2576,66 @@ function runDemo(){
   loop();
 }
 
+/* ───────── 협업 데모 (?demo=collab). 원격 커서 2명 + 나, 셋이 동시에 그리고 채팅. 솔로 데모처럼 실제 앱을 굴림 ───────── */
+function runCollabDemo(){
+  allowSave = false;
+  document.body.classList.add("codemo");
+  const css = document.createElement("style");
+  css.textContent =
+    ".codemo #libFab,.codemo #gridFab,.codemo #fab,.codemo #zoomHud,.codemo #mtop,.codemo #mtoolbar,.codemo #placebar{display:none!important;}"
+    + ".codemo #board{cursor:none!important;}"
+    + "#demoCursor{position:fixed;left:0;top:0;z-index:99999;pointer-events:none;transition:transform .5s cubic-bezier(.45,0,.25,1);will-change:transform;}"
+    + "#demoCursor .dc-in{transition:transform .12s ease;transform-origin:2px 2px;display:block;}"
+    + "#demoCursor.clk .dc-in{transform:scale(.8);}";
+  document.head.appendChild(css);
+
+  myUid = "me"; myName = "나"; myColor = ROOM_COLORS[2];   // 내 커서 = 초록 잎(닉네임 없음)
+  const cur = document.createElement("div"); cur.id = "demoCursor";
+  cur.innerHTML = "<img class='dc-in' src='" + leafCursorURL(myColor, 1) + "' width='22' height='22'>";
+  document.body.appendChild(cur);
+
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const MOVE = 520, PLACE = 300, RMOVE = 520, RPLACE = 300;
+  function cellXY(x, y){ const r = boardEl.getBoundingClientRect(), z = state.cam.z; return [(x*CELL + CELL/2 - state.cam.x)*z + r.left, (y*CELL + CELL/2 - state.cam.y)*z + r.top]; }
+  function tap(){ cur.classList.add("clk"); setTimeout(() => cur.classList.remove("clk"), 130); }
+  async function myMove(x, y){ const [sx, sy] = cellXY(x, y); cur.style.transform = `translate(${sx-2}px,${sy-2}px)`; myCursorW = { x: x*CELL + CELL/2, y: y*CELL + CELL/2 }; await sleep(MOVE); }
+  function remoteMove(uid, x, y){ const c = remoteCursors.get(uid); if (!c) return Promise.resolve();
+    const tx = x*CELL + CELL/2, ty = y*CELL + CELL/2, sx = c.x, sy = c.y, t0 = performance.now();
+    return new Promise(res => { function f(now){ const p = Math.min(1, (now-t0)/RMOVE), e = p<.5 ? 2*p*p : 1-Math.pow(-2*p+2,2)/2; c.x = sx+(tx-sx)*e; c.y = sy+(ty-sy)*e; scheduleRender(); if (p<1) requestAnimationFrame(f); else res(); } requestAnimationFrame(f); }); }
+  async function myDraw(cells){ for (const [x, y, sh, rot, col] of cells){ await myMove(x, y); tap(); setCell(x, y, { sh, rot, col }); scheduleRender(); await sleep(PLACE); } }
+  async function remoteDraw(uid, cells){ for (const [x, y, sh, rot, col] of cells){ await remoteMove(uid, x, y); setCell(x, y, { sh, rot, col }); scheduleRender(); await sleep(RPLACE); } }
+  function remoteChat(u, text){ appendChat(u.name, u.color, text); showChatBubble(u.uid, text, u.color); }
+  function myChat(text){ appendChat(myName, myColor, text); showChatBubble(myUid, text, myColor); }
+  function centerCam(z){ const r = boardEl.getBoundingClientRect(); state.cam.z = z; state.cam.x = 4*CELL - r.width/(2*z); state.cam.y = 3*CELL - r.height/(2*z); }
+  function showRoomBar(n){ const bar = document.getElementById("roombar"); bar.classList.add("visible"); document.body.classList.add("inroom"); document.getElementById("roomName").textContent = "나"; document.getElementById("roomDot").style.background = myColor; document.getElementById("roomCount").textContent = n + "명"; }
+
+  const R1 = { uid:"r1", name:"데이지", color:"#7b6cf6" }, R2 = { uid:"r2", name:"민들레", color:"#ff7a59" };
+  const tulip = [[0,0,'Q',3,'p'],[1,0,'Q',2,'p'],[0,1,'Q',3,'p'],[1,1,'Q',2,'p'],[0,2,'Q',1,'p'],[1,2,'Q',0,'p'],[0,3,'Q',1,'g'],[1,3,'Q',0,'g']];
+  const round = [[4,0,'C',0,'y'],[3,1,'C',0,'y'],[3,2,'C',0,'y'],[3,3,'C',0,'y'],[4,3,'C',0,'y'],[3,4,'C',0,'y'],[4,4,'C',0,'y'],[3,5,'Q',3,'g'],[4,5,'Q',2,'g']];
+  const pin = [[6,0,'Q',3,'y'],[7,0,'Q',0,'y'],[6,1,'Q',2,'y'],[7,1,'Q',1,'y'],[6,2,'Q',2,'g'],[7,2,'Q',0,'g']];
+
+  async function session(){
+    while (true){
+      state.cells.clear(); chatBubbles.clear(); typingUsers.clear(); state.bgOn = true; roomConnected = true;
+      remoteCursors.set(R1.uid, { uid:R1.uid, name:R1.name, color:R1.color, x: 1*CELL, y: 8*CELL });
+      remoteCursors.set(R2.uid, { uid:R2.uid, name:R2.name, color:R2.color, x: 7*CELL, y: 8*CELL });
+      cur.style.transform = `translate(${innerWidth/2 - 2}px,${innerHeight*0.72 - 2}px)`;
+      showRoomBar(3); centerCam(1.05); scheduleRender(); await sleep(900);
+      const pa = remoteDraw(R1.uid, tulip), pb = myDraw(round), pc = remoteDraw(R2.uid, pin);   // 셋이 동시에
+      await sleep(1200); remoteChat(R1, "같이 그리자!");
+      await sleep(2300); remoteChat(R2, "오 예쁘다");
+      await Promise.all([pa, pb, pc]);
+      await sleep(400); myChat("우와 최고!");
+      await sleep(700); remoteChat(R1, "완성!");
+      await sleep(3200);
+    }
+  }
+  session();
+}
+
 (function init(){
   const params = new URLSearchParams(location.search);
+  if (params.get("demo") === "collab"){ runCollabDemo(); return; }   // 협업 데모(원격 커서+채팅)
   if (params.get("demo")){ runDemo(); return; }   // 녹화용 자동 시연 (하단독으로 그리기)
   if (!IS_TOUCH) showMyLeaf();   // 로드 시 솔로 잎 커서 적용(협업 입장하면 방 색으로 갱신)
   if (params.get("room")){                                                   // 협업 방 링크
