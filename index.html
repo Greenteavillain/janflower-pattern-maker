@@ -576,10 +576,12 @@
     <div class="shape-row" id="dShapes"></div>
     <span class="vdiv"></span>
     <div class="color-row" id="dColors"></div>
+    <!-- 영역선택 버튼: 임시 숨김 (나중에 부활) — 되살리려면 아래 주석 해제
     <span class="vdiv"></span>
     <button class="ibtn" id="dSelect" title="영역 선택 (V) — 드래그해 복사·타일·갤러리 올리기">
       <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"><rect x="4" y="4" width="12" height="12" stroke-dasharray="2 2" stroke-dashoffset="1"/></svg>
     </button>
+    -->
   </div>
 
   <!-- 모바일 하단 툴바 -->
@@ -590,9 +592,11 @@
       <div class="color-row" id="mColors"></div>
     </div>
     <div class="mtb-fixed">
+      <!-- 영역선택 버튼: 임시 숨김 (나중에 부활)
       <button class="ibtn" id="mSelect" title="영역 선택">
         <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"><rect x="4" y="4" width="12" height="12" stroke-dasharray="2 2" stroke-dashoffset="1"/></svg>
       </button>
+      -->
       <button class="ibtn" id="mUndo" title="실행취소">
         <svg class="ic" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.8 3.2 7.6 7 11.4"/><path d="M3.2 7.6h8.6a4.6 4.6 0 0 1 0 9.2H8.2"/></svg>
       </button>
@@ -2205,7 +2209,7 @@ async function openGallery(){
 }
 
 document.getElementById("galleryUploadBtn").addEventListener("click", () => setSelectMode(true));
-document.getElementById("dSelect").addEventListener("click", () => setSelectMode(!state.selectMode));
+{ const ds = document.getElementById("dSelect"); if (ds) ds.addEventListener("click", () => setSelectMode(!state.selectMode)); }
 { const ms = document.getElementById("mSelect"); if (ms) ms.addEventListener("click", () => setSelectMode(!state.selectMode)); }
 document.getElementById("galleryBrowseBtn").addEventListener("click", openGallery);
 selUpload.addEventListener("click", doGalleryUpload);
