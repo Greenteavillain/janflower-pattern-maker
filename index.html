@@ -705,12 +705,12 @@ const PRESETS = [
       "yC0 .",
       "yC0 yC0",
       "yC0 yC0",
-      "gQ2 gQ3",
+      "gQ3 gQ2",
   ]},
   { name:"바람개비", cat:"꽃", data:[
-      "yQ1 yQ2",
-      "yQ0 yQ3",
-      "gQ2 gQ3",
+      "yQ3 yQ0",
+      "yQ2 yQ1",
+      "gQ2 gQ0",
   ]},
   { name:"들꽃", cat:"꽃", data:[
       ".   pC0 .",
@@ -778,9 +778,9 @@ const PRESETS = [
       ".   .   .   .   yC0",
       ".   .   .   yC0",
       "pQ3 pQ2 .   yC0",
-      "pQ3 pQ2 .   yC0 yC0 .   yQ1 yQ2",
-      "pQ1 pQ0 .   yC0 yC0 .   yQ0 yQ3",
-      "gQ1 gQ0 .   gQ2 gQ3 .   gQ2 gQ3",
+      "pQ3 pQ2 .   yC0 yC0 .   yQ3 yQ0",
+      "pQ1 pQ0 .   yC0 yC0 .   yQ2 yQ1",
+      "gQ1 gQ0 .   gQ3 gQ2 .   gQ2 gQ0",
   ]},
   { name:"패턴 필드", cat:"장면", data:[
       "pQ2 pQ3 yQ1 yQ2 gQ2 gQ3 yS0 pC0 gC0 yI0 yI1 .",
@@ -2411,7 +2411,7 @@ function runDemo(){
     await pickColor("y"); await useShape("C");
     await dragPaint([[5,0],[4,1],[4,2],[4,3],[4,4],[5,4],[5,3]]);
     await pickColor("g"); await useShape("Q");
-    await placeRot(4,5,2); await placeRot(5,5,3);
+    await placeRot(4,5,3); await placeRot(5,5,2);
   }
   async function loop(){
     while (true){
